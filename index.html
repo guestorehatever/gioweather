@@ -11,6 +11,7 @@
   :root{
     --coral:#ff8f6b;
     --mint:#5eead4;
+    --violet:#c4b5fd;
     --glass:rgba(255,255,255,0.14);
     --glass-brd:rgba(255,255,255,0.28);
     --glass-brd-soft:rgba(255,255,255,0.16);
@@ -98,6 +99,7 @@
   .unit-toggle{display:flex; background:rgba(255,255,255,0.14); border:1px solid var(--glass-brd-soft); border-radius:999px; overflow:hidden;}
   .unit-toggle button{border:none; border-radius:0; background:transparent; padding:9px 13px;}
   .unit-toggle button.active{background:rgba(255,255,255,0.9); color:#10161f;}
+  #nerdBtn.active{background:rgba(94,234,212,0.85); color:#0a1512; border-color:rgba(94,234,212,0.85);}
 
   .suggest{
     position:absolute; top:calc(100% + 8px); left:0; right:0; z-index:30;
@@ -138,8 +140,9 @@
   .cell .value{font-family:var(--font-display); font-size:19px; font-weight:600; margin-top:4px;}
   .cell .value.warn{color:var(--coral);}
   .cell .value.cyan{color:var(--mint);}
+  .cell .sub{font-family:var(--font-mono); font-size:10px; color:var(--ink-faint); margin-top:3px;}
 
-  .section-title{font-family:var(--font-mono); font-size:11px; letter-spacing:1.8px; text-transform:uppercase; color:var(--ink-faint); margin:22px 8px 10px;}
+  .section-title{font-family:var(--font-mono); font-size:11px; letter-spacing:1.8px; text-transform:uppercase; color:var(--ink-faint); margin:22px 8px 10px; display:flex; align-items:center; justify-content:space-between;}
 
   .hourly{display:flex; gap:10px; overflow-x:auto; padding:16px 14px; margin-bottom:16px;}
   .hour{min-width:70px; text-align:center; flex:0 0 auto;}
@@ -166,12 +169,33 @@
 
   footer{text-align:center; font-family:var(--font-mono); font-size:10.5px; color:var(--ink-faint); margin-top:22px; letter-spacing:.6px;}
 
+  /* ---------------- nerd mode ---------------- */
+  #nerdPanel{display:none; padding:18px 20px 20px; margin-bottom:16px;}
+  #nerdPanel.open{display:block;}
+  .nerd-head{display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;}
+  .nerd-head h2{font-family:var(--font-mono); font-size:12px; letter-spacing:2px; text-transform:uppercase; margin:0; color:var(--mint);}
+  .nerd-head .nerd-sub{font-family:var(--font-mono); font-size:9.5px; color:var(--ink-faint);}
+  .nerd-groups{display:grid; grid-template-columns:repeat(auto-fit, minmax(230px,1fr)); gap:14px;}
+  .nerd-card{background:rgba(0,0,0,0.18); border:1px solid var(--glass-brd-soft); border-radius:18px; padding:14px 16px;}
+  .nerd-card h3{font-family:var(--font-mono); font-size:10px; letter-spacing:1.4px; text-transform:uppercase; color:var(--ink-faint); margin:0 0 10px;}
+  .nerd-row{display:flex; justify-content:space-between; align-items:baseline; padding:6px 0; border-top:1px dashed rgba(255,255,255,0.1);}
+  .nerd-row:first-of-type{border-top:none;}
+  .nerd-row .k{font-family:var(--font-body); font-size:12.5px; color:var(--ink-dim);}
+  .nerd-row .v{font-family:var(--font-mono); font-size:13px; font-weight:600; text-align:right;}
+  .aqi-pill{display:inline-block; padding:2px 9px; border-radius:999px; font-family:var(--font-mono); font-size:10.5px; font-weight:600; margin-left:6px;}
+  .moon-row{display:flex; align-items:center; gap:12px; padding:4px 0 10px;}
+  .moon-emoji{font-size:34px; line-height:1;}
+  .moon-meta .v{font-family:var(--font-display); font-size:15px; font-weight:600;}
+  .moon-meta .s{font-family:var(--font-mono); font-size:10.5px; color:var(--ink-faint);}
+  .trend-arrow{font-size:13px; margin-left:4px;}
+
   @media (max-width:600px){
     .temp-display{font-size:60px;}
     .icon-box svg{width:76px; height:76px;}
     .day-row{grid-template-columns:64px 24px 1fr 66px 36px; gap:6px; font-size:12px;}
     input[type="text"]{width:130px;}
     .brand small{display:none;}
+    .nerd-groups{grid-template-columns:1fr;}
   }
 </style>
 </head>
@@ -207,6 +231,7 @@
         <button id="unitF" class="active">°F</button>
         <button id="unitC">°C</button>
       </div>
+      <button id="nerdBtn" title="Toggle nerd mode">🤓 Nerd</button>
       <a class="btnlink" href="radar.html" title="Open live radar">🛰️ Radar</a>
     </div>
   </header>
@@ -233,6 +258,69 @@
       <div class="grid" id="detailsGrid"></div>
     </section>
 
+    <section id="nerdPanel" class="glass">
+      <div class="nerd-head">
+        <h2>Nerd panel</h2>
+        <div class="nerd-sub" id="nerdUpdated">--</div>
+      </div>
+      <div class="nerd-groups">
+
+        <div class="nerd-card">
+          <h3>Atmosphere</h3>
+          <div class="nerd-row"><span class="k">Dew point</span><span class="v" id="nDew">--</span></div>
+          <div class="nerd-row"><span class="k">Wind gusts</span><span class="v" id="nGust">--</span></div>
+          <div class="nerd-row"><span class="k">Vapor pressure deficit</span><span class="v" id="nVpd">--</span></div>
+          <div class="nerd-row"><span class="k">CAPE</span><span class="v" id="nCape">--</span></div>
+          <div class="nerd-row"><span class="k">Freezing level</span><span class="v" id="nFreeze">--</span></div>
+        </div>
+
+        <div class="nerd-card">
+          <h3>Pressure &amp; cloud decks</h3>
+          <div class="nerd-row"><span class="k">Sea-level pressure</span><span class="v" id="nPressMsl">--</span></div>
+          <div class="nerd-row"><span class="k">Surface pressure</span><span class="v" id="nPressSfc">--</span></div>
+          <div class="nerd-row"><span class="k">3&#8209;hr trend</span><span class="v" id="nTrend">--</span></div>
+          <div class="nerd-row"><span class="k">Low / mid / high cloud</span><span class="v" id="nClouds">--</span></div>
+        </div>
+
+        <div class="nerd-card">
+          <h3>Radiation &amp; water</h3>
+          <div class="nerd-row"><span class="k">Shortwave radiation</span><span class="v" id="nRad">--</span></div>
+          <div class="nerd-row"><span class="k">Reference ET₀</span><span class="v" id="nEt0">--</span></div>
+          <div class="nerd-row"><span class="k">Soil temp (0-6cm)</span><span class="v" id="nSoilT">--</span></div>
+          <div class="nerd-row"><span class="k">Soil moisture</span><span class="v" id="nSoilM">--</span></div>
+        </div>
+
+        <div class="nerd-card">
+          <h3>Air quality</h3>
+          <div class="nerd-row"><span class="k">US AQI</span><span class="v" id="nAqi">--</span></div>
+          <div class="nerd-row"><span class="k">PM2.5 / PM10</span><span class="v" id="nPm">--</span></div>
+          <div class="nerd-row"><span class="k">Ozone (O₃)</span><span class="v" id="nOzone">--</span></div>
+          <div class="nerd-row"><span class="k">NO₂ / SO₂ / CO</span><span class="v" id="nGases">--</span></div>
+        </div>
+
+        <div class="nerd-card">
+          <h3>Sun &amp; moon</h3>
+          <div class="moon-row">
+            <div class="moon-emoji" id="nMoonEmoji">🌑</div>
+            <div class="moon-meta">
+              <div class="v" id="nMoonName">--</div>
+              <div class="s" id="nMoonIllum">-- illuminated · age -- d</div>
+            </div>
+          </div>
+          <div class="nerd-row"><span class="k">Day length</span><span class="v" id="nDayLen">--</span></div>
+          <div class="nerd-row"><span class="k">Solar noon</span><span class="v" id="nSolarNoon">--</span></div>
+        </div>
+
+        <div class="nerd-card">
+          <h3>Coordinates</h3>
+          <div class="nerd-row"><span class="k">Latitude / longitude</span><span class="v" id="nLatLon">--</span></div>
+          <div class="nerd-row"><span class="k">Elevation</span><span class="v" id="nElev">--</span></div>
+          <div class="nerd-row"><span class="k">UTC offset</span><span class="v" id="nUtc">--</span></div>
+        </div>
+
+      </div>
+    </section>
+
     <div class="section-title">24-hour outlook</div>
     <div class="hourly glass" id="hourlyRow"></div>
 
@@ -244,12 +332,12 @@
     </div>
   </div>
 
-  <footer>GioWeather v2.0</footer>
+  <footer>GioWeather v2.1 · now with a nerd panel</footer>
 </div>
 
 <script>
 (function(){
-  var state = { unit:'f', lat:null, lon:null, place:null, data:null, lightningTimer:null };
+  var state = { unit:'f', lat:null, lon:null, place:null, data:null, aqi:null, nerd:false, lightningTimer:null };
 
   var els = {
     status: document.getElementById('statusline'),
@@ -259,6 +347,8 @@
     geoBtn: document.getElementById('geoBtn'),
     unitF: document.getElementById('unitF'),
     unitC: document.getElementById('unitC'),
+    nerdBtn: document.getElementById('nerdBtn'),
+    nerdPanel: document.getElementById('nerdPanel'),
     placeName: document.getElementById('placeName'),
     localTime: document.getElementById('localTime'),
     conditionTag: document.getElementById('conditionTag'),
@@ -331,10 +421,13 @@
   }
 
   function cToDisplay(c){ return state.unit==='f' ? Math.round(c*9/5+32) : Math.round(c); }
+  function cToDisplay1(c){ return state.unit==='f' ? (c*9/5+32).toFixed(1) : c.toFixed(1); }
   function kmhToDisplay(kmh){ return state.unit==='f' ? Math.round(kmh*0.621371) : Math.round(kmh); }
   function windUnitLabel(){ return state.unit==='f' ? 'mph' : 'km/h'; }
   function mmToDisplay(mm){ return state.unit==='f' ? (mm/25.4).toFixed(2)+' in' : mm.toFixed(1)+' mm'; }
   function kmToVisDisplay(km){ return state.unit==='f' ? Math.round(km*0.621371)+' mi' : Math.round(km)+' km'; }
+  function hpaToDisplay(hpa){ return state.unit==='f' ? (hpa*0.02953).toFixed(2)+' inHg' : Math.round(hpa)+' hPa'; }
+  function mToDisplay(m){ return state.unit==='f' ? Math.round(m*3.28084).toLocaleString()+' ft' : Math.round(m).toLocaleString()+' m'; }
 
   function setStatus(msg, isErr){
     els.status.textContent = msg;
@@ -375,7 +468,7 @@
             var r = results[parseInt(btn.getAttribute('data-i'),10)];
             els.suggestBox.style.display = 'none';
             els.searchInput.value = '';
-            loadLocation(r.latitude, r.longitude, r.name, [r.admin1, r.country].filter(Boolean).join(', '));
+            loadLocation(r.latitude, r.longitude, r.name, [r.admin1, r.country].filter(Boolean).join(', '), r.elevation);
           });
         });
       })
@@ -410,26 +503,39 @@
     if(state.data) render();
   }
 
-  function loadLocation(lat, lon, name, region){
-    state.lat = lat; state.lon = lon; state.place = {name:name, region:region};
+  els.nerdBtn.addEventListener('click', function(){
+    state.nerd = !state.nerd;
+    els.nerdBtn.classList.toggle('active', state.nerd);
+    els.nerdPanel.classList.toggle('open', state.nerd);
+    if(state.nerd && state.data) renderNerd();
+  });
+
+  function loadLocation(lat, lon, name, region, elevationHint){
+    state.lat = lat; state.lon = lon; state.place = {name:name, region:region, elevation:elevationHint};
     setStatus('Loading sky…');
     els.app.style.display = 'none';
 
     var url = 'https://api.open-meteo.com/v1/forecast?latitude='+lat+'&longitude='+lon+
-      '&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,weather_code,wind_speed_10m,wind_direction_10m,pressure_msl,precipitation,cloud_cover'+
-      '&hourly=temperature_2m,precipitation_probability,weather_code,uv_index,visibility,is_day'+
+      '&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,pressure_msl,surface_pressure,precipitation,cloud_cover,dew_point_2m'+
+      '&hourly=temperature_2m,precipitation_probability,weather_code,uv_index,visibility,is_day,pressure_msl,dew_point_2m,cape,freezing_level_height,cloud_cover_low,cloud_cover_mid,cloud_cover_high,shortwave_radiation,et0_fao_evapotranspiration,vapour_pressure_deficit,soil_temperature_0cm,soil_moisture_0_to_1cm'+
       '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset,uv_index_max,wind_speed_10m_max'+
       '&timezone=auto&forecast_days=8';
 
-    fetch(url)
-      .then(function(r){ if(!r.ok) throw new Error('bad response'); return r.json(); })
-      .then(function(d){
-        state.data = d;
-        render();
-        setStatus('Updated ' + nowHHMM(d.timezone));
-        els.app.style.display = 'block';
-      })
-      .catch(function(){ setStatus('Forecast link failed — try again', true); });
+    var aqiUrl = 'https://air-quality-api.open-meteo.com/v1/air-quality?latitude='+lat+'&longitude='+lon+
+      '&current=us_aqi,pm2_5,pm10,ozone,nitrogen_dioxide,sulphur_dioxide,carbon_monoxide&timezone=auto';
+
+    Promise.all([
+      fetch(url).then(function(r){ if(!r.ok) throw new Error('bad response'); return r.json(); }),
+      fetch(aqiUrl).then(function(r){ return r.ok ? r.json() : null; }).catch(function(){ return null; })
+    ]).then(function(results){
+      state.data = results[0];
+      state.aqi = results[1];
+      if(state.data.elevation != null) state.place.elevation = state.data.elevation;
+      render();
+      if(state.nerd) renderNerd();
+      setStatus('Updated ' + nowHHMM(state.data.timezone));
+      els.app.style.display = 'block';
+    }).catch(function(){ setStatus('Forecast link failed — try again', true); });
   }
 
   function nowHHMM(tz){
@@ -441,8 +547,49 @@
     var dirs = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
     return dirs[Math.round(deg / 22.5) % 16];
   }
-  function cell(label, value, cls){
-    return '<div class="cell"><div class="label">'+label+'</div><div class="value '+(cls||'')+'">'+value+'</div></div>';
+  function cell(label, value, cls, sub){
+    return '<div class="cell"><div class="label">'+label+'</div><div class="value '+(cls||'')+'">'+value+'</div>'+(sub?'<div class="sub">'+sub+'</div>':'')+'</div>';
+  }
+
+  // ---------- nerdy helpers ----------
+  function moonPhaseInfo(date){
+    var synodic = 29.530588853;
+    var knownNewMoon = Date.UTC(2000,0,6,18,14,0);
+    var days = (date.getTime() - knownNewMoon) / 86400000;
+    var age = days % synodic;
+    if(age < 0) age += synodic;
+    var illum = (1 - Math.cos(2*Math.PI*age/synodic)) / 2;
+    var names = [
+      [1.84566,'New moon','🌑'], [5.53699,'Waxing crescent','🌒'], [9.22831,'First quarter','🌓'],
+      [12.91963,'Waxing gibbous','🌔'], [16.61096,'Full moon','🌕'], [20.30228,'Waning gibbous','🌖'],
+      [23.99361,'Last quarter','🌗'], [27.68493,'Waning crescent','🌘'], [29.530588853,'New moon','🌑']
+    ];
+    var pick = names[0];
+    for(var i=0;i<names.length;i++){ if(age < names[i][0]){ pick = names[i]; break; } }
+    return { age: age, illum: illum, name: pick[1], emoji: pick[2] };
+  }
+
+  function aqiCategory(aqi){
+    if(aqi==null) return ['--','#888'];
+    if(aqi<=50) return ['Good','#5eead4'];
+    if(aqi<=100) return ['Moderate','#fde047'];
+    if(aqi<=150) return ['USG','#ff8f6b'];
+    if(aqi<=200) return ['Unhealthy','#f87171'];
+    if(aqi<=300) return ['Very unhealthy','#c084fc'];
+    return ['Hazardous','#a3282f'];
+  }
+
+  function pressureTrend(hourly, hourIdx){
+    if(!hourly.pressure_msl) return null;
+    var prevIdx = hourIdx - 3;
+    if(prevIdx < 0) return null;
+    var diff = hourly.pressure_msl[hourIdx] - hourly.pressure_msl[prevIdx];
+    var arrow = '→', desc = 'Steady';
+    if(diff >= 1.6){ arrow = '↑↑'; desc = 'Rising rapidly'; }
+    else if(diff >= 0.6){ arrow = '↑'; desc = 'Rising'; }
+    else if(diff <= -1.6){ arrow = '↓↓'; desc = 'Falling rapidly'; }
+    else if(diff <= -0.6){ arrow = '↓'; desc = 'Falling'; }
+    return { diff: diff, arrow: arrow, desc: desc };
   }
 
   // ================= SKY RENDERING =================
@@ -452,14 +599,12 @@
     dusk:  ['#2c2350','#8a4a6b','#e08a63'],
     night: ['#05070f','#0d1730','#1b2c4f']
   };
-  // Grey sky for full overcast (excludes partly cloudy, which keeps the normal daytime/night gradient)
   var GRADIENTS_OVERCAST = {
     dawn:  ['#5b5f68','#7a7e87','#9aa0a8'],
     day:   ['#6b7280','#868d99','#a9afb8'],
     dusk:  ['#454952','#5f636d','#7c8089'],
     night: ['#1c1f24','#282c33','#363b43']
   };
-  // Darker grey sky for thunderstorms
   var GRADIENTS_STORM = {
     dawn:  ['#2e3138','#3d4149','#4c515a'],
     day:   ['#3a3e46','#494e57','#5a6069'],
@@ -592,7 +737,6 @@
 
     clearSkyLayers();
 
-    // sun / moon
     var showBody = cloudCover < 78 && category !== 'overcast' && category !== 'storm' && category !== 'fog';
     if(showBody){
       els.sunMoon.className = isDay ? 'sun' : 'moon';
@@ -606,10 +750,8 @@
       els.sunMoon.style.opacity = 0;
     }
 
-    // stars
     buildStars(!isDay && (category==='clear' || category==='partly'));
 
-    // clouds
     var cloudTint = isDay ? 'rgba(255,255,255,0.92)' : 'rgba(150,160,190,0.55)';
     if(category==='storm') cloudTint = 'rgba(70,76,92,0.9)';
     if(category==='overcast') cloudTint = isDay ? 'rgba(210,216,224,0.9)' : 'rgba(90,98,120,0.7)';
@@ -617,7 +759,6 @@
     if(category==='storm') cloudCount = Math.max(cloudCount, 6);
     if(cloudCount > 0) buildClouds(cloudCount, cloudTint, 0.75);
 
-    // precipitation / fog / lightning
     if(category==='rain') buildRain('normal');
     if(category==='storm'){ buildRain('heavy'); startLightning(); }
     if(category==='snow') buildSnow();
@@ -649,11 +790,12 @@
     var uv = d.hourly.uv_index[hourIdx];
     var visKm = d.hourly.visibility[hourIdx] / 1000;
     var windDir = degToCompass(cur.wind_direction_10m);
+    var trend = pressureTrend(d.hourly, hourIdx);
 
     els.detailsGrid.innerHTML = [
       cell('Humidity', cur.relative_humidity_2m + '%'),
-      cell('Wind', kmhToDisplay(cur.wind_speed_10m) + ' ' + windUnitLabel() + ' ' + windDir),
-      cell('Pressure', Math.round(cur.pressure_msl) + ' hPa'),
+      cell('Wind', kmhToDisplay(cur.wind_speed_10m) + ' ' + windUnitLabel() + ' ' + windDir, '', 'gusts ' + kmhToDisplay(cur.wind_gusts_10m) + ' ' + windUnitLabel()),
+      cell('Pressure', hpaToDisplay(cur.pressure_msl), '', trend ? trend.desc + ' ' + trend.arrow : ''),
       cell('UV index', uv!=null ? uv.toFixed(1) : '--', uv >= 6 ? 'warn' : ''),
       cell('Visibility', kmToVisDisplay(visKm)),
       cell('Precip', mmToDisplay(cur.precipitation || 0), 'cyan'),
@@ -699,7 +841,73 @@
       'Peak UV index today: ' + (maxUv!=null?maxUv.toFixed(1):'--'),
       'Wind ' + kmhToDisplay(cur.wind_speed_10m) + ' ' + windUnitLabel() + ' from the ' + windDir
     ];
+    if(state.aqi && state.aqi.current && state.aqi.current.us_aqi != null){
+      msgs.push('US AQI ' + Math.round(state.aqi.current.us_aqi) + ' (' + aqiCategory(state.aqi.current.us_aqi)[0] + ')');
+    }
     els.marqueeText.textContent = msgs.join('   •   ') + '   •   ';
+
+    if(state.nerd) renderNerd();
+  }
+
+  function renderNerd(){
+    var d = state.data;
+    var cur = d.current;
+    var nowIso = cur.time;
+    var hourIdx = d.hourly.time.indexOf(nowIso);
+    if(hourIdx < 0) hourIdx = 0;
+    var h = d.hourly;
+
+    document.getElementById('nerdUpdated').textContent = 'as of ' + nowHHMM(d.timezone);
+
+    document.getElementById('nDew').textContent = cToDisplay(cur.dew_point_2m) + '°';
+    document.getElementById('nGust').textContent = kmhToDisplay(cur.wind_gusts_10m) + ' ' + windUnitLabel();
+    document.getElementById('nVpd').textContent = h.vapour_pressure_deficit ? h.vapour_pressure_deficit[hourIdx].toFixed(2) + ' kPa' : '--';
+    document.getElementById('nCape').textContent = h.cape ? Math.round(h.cape[hourIdx]) + ' J/kg' : '--';
+    document.getElementById('nFreeze').textContent = h.freezing_level_height ? mToDisplay(h.freezing_level_height[hourIdx]) : '--';
+
+    document.getElementById('nPressMsl').textContent = hpaToDisplay(cur.pressure_msl);
+    document.getElementById('nPressSfc').textContent = hpaToDisplay(cur.surface_pressure);
+    var trend = pressureTrend(h, hourIdx);
+    document.getElementById('nTrend').innerHTML = trend ? (trend.diff>=0?'+':'') + trend.diff.toFixed(1) + ' hPa <span class="trend-arrow">' + trend.arrow + '</span>' : '--';
+    if(h.cloud_cover_low){
+      document.getElementById('nClouds').textContent = h.cloud_cover_low[hourIdx] + '% / ' + h.cloud_cover_mid[hourIdx] + '% / ' + h.cloud_cover_high[hourIdx] + '%';
+    }
+
+    document.getElementById('nRad').textContent = h.shortwave_radiation ? Math.round(h.shortwave_radiation[hourIdx]) + ' W/m²' : '--';
+    document.getElementById('nEt0').textContent = h.et0_fao_evapotranspiration ? h.et0_fao_evapotranspiration[hourIdx].toFixed(2) + ' mm' : '--';
+    document.getElementById('nSoilT').textContent = h.soil_temperature_0cm ? cToDisplay(h.soil_temperature_0cm[hourIdx]) + '°' : '--';
+    document.getElementById('nSoilM').textContent = h.soil_moisture_0_to_1cm ? h.soil_moisture_0_to_1cm[hourIdx].toFixed(2) + ' m³/m³' : '--';
+
+    if(state.aqi && state.aqi.current){
+      var ac = state.aqi.current;
+      var cat = aqiCategory(ac.us_aqi);
+      document.getElementById('nAqi').innerHTML = (ac.us_aqi!=null?Math.round(ac.us_aqi):'--') + '<span class="aqi-pill" style="background:'+cat[1]+'22; color:'+cat[1]+';">'+cat[0]+'</span>';
+      document.getElementById('nPm').textContent = (ac.pm2_5!=null?ac.pm2_5.toFixed(1):'--') + ' / ' + (ac.pm10!=null?ac.pm10.toFixed(1):'--') + ' µg/m³';
+      document.getElementById('nOzone').textContent = ac.ozone!=null ? ac.ozone.toFixed(0) + ' µg/m³' : '--';
+      document.getElementById('nGases').textContent = (ac.nitrogen_dioxide!=null?ac.nitrogen_dioxide.toFixed(0):'--') + ' / ' + (ac.sulphur_dioxide!=null?ac.sulphur_dioxide.toFixed(0):'--') + ' / ' + (ac.carbon_monoxide!=null?Math.round(ac.carbon_monoxide):'--') + ' µg/m³';
+    } else {
+      document.getElementById('nAqi').textContent = 'unavailable';
+      document.getElementById('nPm').textContent = '--';
+      document.getElementById('nOzone').textContent = '--';
+      document.getElementById('nGases').textContent = '--';
+    }
+
+    var moon = moonPhaseInfo(new Date());
+    document.getElementById('nMoonEmoji').textContent = moon.emoji;
+    document.getElementById('nMoonName').textContent = moon.name;
+    document.getElementById('nMoonIllum').textContent = Math.round(moon.illum*100) + '% illuminated · age ' + moon.age.toFixed(1) + ' d';
+
+    var sunrise = new Date(d.daily.sunrise[0]);
+    var sunset = new Date(d.daily.sunset[0]);
+    var lenMs = sunset - sunrise;
+    var lenH = Math.floor(lenMs/3600000), lenM = Math.round((lenMs%3600000)/60000);
+    document.getElementById('nDayLen').textContent = lenH + 'h ' + lenM + 'm';
+    var noon = new Date((sunrise.getTime()+sunset.getTime())/2);
+    document.getElementById('nSolarNoon').textContent = fmtTime(noon.toISOString());
+
+    document.getElementById('nLatLon').textContent = state.lat.toFixed(3) + ', ' + state.lon.toFixed(3);
+    document.getElementById('nElev').textContent = state.place.elevation != null ? mToDisplay(state.place.elevation) : '--';
+    document.getElementById('nUtc').textContent = d.utc_offset_seconds != null ? 'UTC' + (d.utc_offset_seconds>=0?'+':'') + (d.utc_offset_seconds/3600) : '--';
   }
 
   function boot(){
