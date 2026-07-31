@@ -127,6 +127,26 @@
   .statusline{font-family:var(--font-mono); font-size:11px; letter-spacing:1px; color:var(--ink-faint); padding:2px 6px 14px; text-transform:uppercase;}
   .statusline.err{color:#ffb4a8;}
 
+  /* ---------------- weather alerts ---------------- */
+  #alertStack{display:none; flex-direction:column; gap:10px; margin-bottom:16px;}
+  .alert-card{
+    background:rgba(0,0,0,0.3); border:1px solid var(--glass-brd-soft); border-left:4px solid var(--coral);
+    border-radius:16px; padding:12px 14px 13px;
+    -webkit-backdrop-filter:blur(20px); backdrop-filter:blur(20px);
+  }
+  .alert-head{display:flex; align-items:flex-start; gap:10px;}
+  .alert-dot{width:9px; height:9px; border-radius:50%; margin-top:5px; flex:0 0 auto; box-shadow:0 0 8px currentColor;}
+  .alert-titles{flex:1; min-width:0;}
+  .alert-event{font-family:var(--font-display); font-weight:700; font-size:14.5px;}
+  .alert-meta{font-family:var(--font-mono); font-size:10px; letter-spacing:.4px; color:var(--ink-faint); margin-top:3px; text-transform:uppercase;}
+  .alert-toggle{padding:6px 12px; font-size:11px; flex:0 0 auto;}
+  .alert-body{max-height:0; overflow:hidden; transition:max-height 0.35s ease;}
+  .alert-body.open{max-height:600px; margin-top:11px; padding-top:11px; border-top:1px dashed rgba(255,255,255,0.14);}
+  .alert-body p{font-family:var(--font-body); font-size:12.5px; line-height:1.55; color:var(--ink-dim); margin:0 0 9px;}
+  .alert-body p:last-child{margin-bottom:0;}
+  .alert-body .instr{color:var(--ink); font-weight:600;}
+  .alert-source{font-family:var(--font-mono); font-size:9.5px; color:var(--ink-faint); margin-top:2px;}
+
   /* hero */
   .hero{padding:28px 26px; margin-bottom:16px;}
   .hero-top{display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:14px;}
@@ -251,6 +271,8 @@
   <div id="statusline" class="statusline">Loading sky…</div>
 
   <div id="app" style="display:none;">
+    <div id="alertStack"></div>
+
     <section class="hero glass">
       <div class="hero-top">
         <div>
@@ -372,6 +394,7 @@
     hourlyRow: document.getElementById('hourlyRow'),
     dailyList: document.getElementById('dailyList'),
     marqueeText: document.getElementById('marqueeText'),
+    alertStack: document.getElementById('alertStack'),
     sky: document.getElementById('sky'),
     skyOverlay: document.getElementById('skyOverlay'),
     stars: document.getElementById('stars'),
@@ -475,6 +498,7 @@
     { key:'night-storm',  label:'Test — Night Thunderstorms',code:96, isDay:0, phase:null,  cloud:99, precip:15,  tempC:19, humidity:85, windKmh:38, gustKmh:70, uv:0,   visKm:5,   pressure:992,  dew:18, cape:2800 },
     { key:'dawn',         label:'Test — Sunrise (Dawn)',     code:1,  isDay:1, phase:'dawn', cloud:20, precip:0,   tempC:9,  humidity:65, windKmh:6,  gustKmh:10, uv:0.2, visKm:18,  pressure:1016, dew:5 },
     { key:'dusk',         label:'Test — Sunset (Dusk)',      code:1,  isDay:1, phase:'dusk', cloud:25, precip:0,   tempC:17, humidity:52, windKmh:9,  gustKmh:15, uv:0.3, visKm:19,  pressure:1014, dew:8 },
+    { key:'alert-demo',   label:'Test — Severe Alert Banner',code:95, isDay:1, phase:null,  cloud:97, precip:9,   tempC:26, humidity:70, windKmh:28, gustKmh:55, uv:3.0, visKm:9,   pressure:999,  dew:20, cape:1800, mockAlert:true },
   ];
 
   function pad2(n){ return n < 10 ? '0'+n : ''+n; }
@@ -590,6 +614,20 @@
     }};
     render();
     if(state.nerd) renderNerd();
+    if(sc.mockAlert){
+      renderAlerts([{ properties: {
+        event: 'Severe Thunderstorm Warning',
+        severity: 'Severe',
+        areaDesc: 'Simulated County',
+        expires: new Date(Date.now() + 3600000).toISOString(),
+        headline: 'Severe Thunderstorm Warning issued for this simulated area',
+        description: 'A severe thunderstorm capable of producing damaging winds up to 70 mph and quarter-size hail was located over the test area, moving northeast at 30 mph.',
+        instruction: 'Move to an interior room on the lowest floor of a sturdy building. Avoid windows.',
+        senderName: 'NWS Test Office (simulated)'
+      }}]);
+    } else {
+      renderAlerts([]);
+    }
     setStatus('Test scenario — ' + sc.label.replace('Test — ',''));
     els.app.style.display = 'block';
   }
@@ -660,6 +698,7 @@
     state.lat = lat; state.lon = lon; state.place = {name:name, region:region, elevation:elevationHint};
     setStatus('Loading sky…');
     els.app.style.display = 'none';
+    els.alertStack.style.display = 'none';
 
     var url = 'https://api.open-meteo.com/v1/forecast?latitude='+lat+'&longitude='+lon+
       '&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,pressure_msl,surface_pressure,precipitation,cloud_cover,dew_point_2m'+
@@ -670,15 +709,21 @@
     var aqiUrl = 'https://air-quality-api.open-meteo.com/v1/air-quality?latitude='+lat+'&longitude='+lon+
       '&current=us_aqi,pm2_5,pm10,ozone,nitrogen_dioxide,sulphur_dioxide,carbon_monoxide&timezone=auto';
 
+    // NOAA/NWS alerts — US-only coverage (territories included), coordinates capped at 4 decimal places
+    var alertUrl = 'https://api.weather.gov/alerts/active?point=' + lat.toFixed(4) + ',' + lon.toFixed(4);
+
     Promise.all([
       fetch(url).then(function(r){ if(!r.ok) throw new Error('bad response'); return r.json(); }),
-      fetch(aqiUrl).then(function(r){ return r.ok ? r.json() : null; }).catch(function(){ return null; })
+      fetch(aqiUrl).then(function(r){ return r.ok ? r.json() : null; }).catch(function(){ return null; }),
+      fetch(alertUrl, {headers:{'Accept':'application/geo+json'}}).then(function(r){ return r.ok ? r.json() : null; }).catch(function(){ return null; })
     ]).then(function(results){
       state.data = results[0];
       state.aqi = results[1];
       if(state.data.elevation != null) state.place.elevation = state.data.elevation;
       render();
       if(state.nerd) renderNerd();
+      var alertData = results[2];
+      renderAlerts(alertData && alertData.features ? alertData.features : []);
       setStatus('Updated ' + nowHHMM(state.data.timezone));
       els.app.style.display = 'block';
     }).catch(function(){ setStatus('Forecast link failed — try again', true); });
@@ -723,6 +768,49 @@
     if(aqi<=200) return ['Unhealthy','#f87171'];
     if(aqi<=300) return ['Very unhealthy','#c084fc'];
     return ['Hazardous','#a3282f'];
+  }
+
+  // ---------- NOAA/NWS weather alerts ----------
+  function alertSeverityColor(sev){
+    var map = { Extreme:'#ef4444', Severe:'#fb923c', Moderate:'#facc15', Minor:'#7dd3fc', Unknown:'#9ca3af' };
+    return map[sev] || map.Unknown;
+  }
+
+  function renderAlerts(features){
+    if(!features || !features.length){
+      els.alertStack.style.display = 'none';
+      els.alertStack.innerHTML = '';
+      return;
+    }
+    els.alertStack.style.display = 'flex';
+    els.alertStack.innerHTML = features.map(function(f, i){
+      var p = f.properties || {};
+      var color = alertSeverityColor(p.severity);
+      var expires = p.expires ? new Date(p.expires).toLocaleString('en-US', {month:'short', day:'numeric', hour:'numeric', minute:'2-digit'}) : null;
+      return '<div class="alert-card" style="border-left-color:'+color+';">' +
+        '<div class="alert-head">' +
+          '<span class="alert-dot" style="background:'+color+'; color:'+color+';"></span>' +
+          '<div class="alert-titles">' +
+            '<div class="alert-event">'+(p.event||'Weather alert')+'</div>' +
+            '<div class="alert-meta">'+(p.severity||'Unknown')+' · '+(p.areaDesc||'this area')+(expires?' · until '+expires:'')+'</div>' +
+          '</div>' +
+          '<button class="alert-toggle" data-toggle="'+i+'">Details</button>' +
+        '</div>' +
+        '<div class="alert-body" id="alertBody'+i+'">' +
+          (p.headline ? '<p>'+p.headline+'</p>' : '') +
+          (p.description ? '<p>'+p.description+'</p>' : '') +
+          (p.instruction ? '<p class="instr">'+p.instruction+'</p>' : '') +
+          '<div class="alert-source">Source: '+(p.senderName||'National Weather Service')+'</div>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+    Array.prototype.forEach.call(els.alertStack.querySelectorAll('.alert-toggle'), function(btn){
+      btn.addEventListener('click', function(){
+        var body = document.getElementById('alertBody'+btn.getAttribute('data-toggle'));
+        var open = body.classList.toggle('open');
+        btn.textContent = open ? 'Hide' : 'Details';
+      });
+    });
   }
 
   function pressureTrend(hourly, hourIdx){
