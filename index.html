@@ -452,6 +452,7 @@
     clearTimeout(searchTimer);
     var q = els.searchInput.value.trim();
     if(q.length < 2){ els.suggestBox.style.display='none'; return; }
+    if(/^test/i.test(q)){ showTestSuggestions(); return; }
     searchTimer = setTimeout(function(){ doSearch(q); }, 300);
   });
   document.addEventListener('click', function(e){
@@ -459,6 +460,139 @@
       els.suggestBox.style.display = 'none';
     }
   });
+
+  // ---------- dev test scenarios ----------
+  var TEST_SCENARIOS = [
+    { key:'sunny-day',    label:'Test — Sunny Day',          code:0,  isDay:1, phase:null,  cloud:5,  precip:0,   tempC:24, humidity:38, windKmh:12, gustKmh:20, uv:7.2, visKm:24,  pressure:1018, dew:9 },
+    { key:'clear-night',  label:'Test — Clear Night',        code:0,  isDay:0, phase:null,  cloud:8,  precip:0,   tempC:14, humidity:55, windKmh:8,  gustKmh:14, uv:0,   visKm:22,  pressure:1020, dew:7 },
+    { key:'partly-cloudy',label:'Test — Partly Cloudy',      code:2,  isDay:1, phase:null,  cloud:45, precip:0,   tempC:20, humidity:50, windKmh:14, gustKmh:24, uv:5.1, visKm:20,  pressure:1015, dew:11 },
+    { key:'overcast',     label:'Test — Overcast',           code:3,  isDay:1, phase:null,  cloud:95, precip:0,   tempC:16, humidity:68, windKmh:18, gustKmh:30, uv:1.5, visKm:14,  pressure:1008, dew:11 },
+    { key:'fog',          label:'Test — Foggy',              code:45, isDay:1, phase:null,  cloud:90, precip:0,   tempC:11, humidity:96, windKmh:4,  gustKmh:8,  uv:0.4, visKm:0.6, pressure:1012, dew:10.5 },
+    { key:'day-rain',     label:'Test — Day Rain',           code:63, isDay:1, phase:null,  cloud:92, precip:4.2, tempC:14, humidity:88, windKmh:22, gustKmh:38, uv:1.1, visKm:9,   pressure:1002, dew:12.5 },
+    { key:'night-rain',   label:'Test — Night Rain',         code:63, isDay:0, phase:null,  cloud:95, precip:6.5, tempC:12, humidity:92, windKmh:26, gustKmh:44, uv:0,   visKm:7,   pressure:998,  dew:11 },
+    { key:'snow',         label:'Test — Snowstorm',          code:75, isDay:1, phase:null,  cloud:88, precip:8,   tempC:-4, humidity:80, windKmh:20, gustKmh:36, uv:0.8, visKm:2.5, pressure:1005, dew:-6 },
+    { key:'day-storm',    label:'Test — Day Thunderstorms',  code:95, isDay:1, phase:null,  cloud:98, precip:12,  tempC:23, humidity:78, windKmh:34, gustKmh:62, uv:2.2, visKm:6,   pressure:995,  dew:19, cape:2200 },
+    { key:'night-storm',  label:'Test — Night Thunderstorms',code:96, isDay:0, phase:null,  cloud:99, precip:15,  tempC:19, humidity:85, windKmh:38, gustKmh:70, uv:0,   visKm:5,   pressure:992,  dew:18, cape:2800 },
+    { key:'dawn',         label:'Test — Sunrise (Dawn)',     code:1,  isDay:1, phase:'dawn', cloud:20, precip:0,   tempC:9,  humidity:65, windKmh:6,  gustKmh:10, uv:0.2, visKm:18,  pressure:1016, dew:5 },
+    { key:'dusk',         label:'Test — Sunset (Dusk)',      code:1,  isDay:1, phase:'dusk', cloud:25, precip:0,   tempC:17, humidity:52, windKmh:9,  gustKmh:15, uv:0.3, visKm:19,  pressure:1014, dew:8 },
+  ];
+
+  function pad2(n){ return n < 10 ? '0'+n : ''+n; }
+  function isoLocal(dt){
+    return dt.getFullYear()+'-'+pad2(dt.getMonth()+1)+'-'+pad2(dt.getDate())+'T'+pad2(dt.getHours())+':'+pad2(dt.getMinutes());
+  }
+
+  function buildScenarioData(sc){
+    var today = new Date(); today.setHours(0,0,0,0);
+    var sunrise = new Date(today.getTime() + (6*60+15)*60000);
+    var sunset  = new Date(today.getTime() + (20*60+10)*60000);
+    var curTime;
+    if(sc.phase === 'dawn') curTime = new Date(sunrise.getTime());
+    else if(sc.phase === 'dusk') curTime = new Date(sunset.getTime());
+    else if(sc.isDay === 1) curTime = new Date(today.getTime() + 13*3600000);
+    else curTime = new Date(today.getTime() + 23*3600000);
+
+    var hTime=[],hTemp=[],hPop=[],hCode=[],hUv=[],hVis=[],hIsDay=[],hPress=[],hDew=[],hCape=[],hFreeze=[],
+        hCloudLow=[],hCloudMid=[],hCloudHigh=[],hRad=[],hEt0=[],hVpd=[],hSoilT=[],hSoilM=[];
+    for(var i=0;i<24;i++){
+      var t = new Date(curTime.getTime() + i*3600000);
+      hTime.push(isoLocal(t));
+      hTemp.push(sc.tempC + Math.sin(i/24*Math.PI*2)*2);
+      hPop.push(Math.max(0, Math.min(100, Math.round((sc.precip>0?55:5) + (Math.random()*20-10)))));
+      hCode.push(sc.code);
+      hUv.push(Math.max(0, sc.uv - Math.abs(i-6)*0.4));
+      hVis.push(sc.visKm*1000);
+      hIsDay.push((t.getHours()>=6 && t.getHours()<20) ? 1 : 0);
+      hPress.push(sc.pressure - i*0.05);
+      hDew.push(sc.dew);
+      hCape.push(sc.cape||0);
+      hFreeze.push(sc.code>=71 && sc.code<=86 ? 500 : 3600);
+      hCloudLow.push(Math.round(sc.cloud*0.6));
+      hCloudMid.push(Math.round(sc.cloud*0.3));
+      hCloudHigh.push(Math.round(sc.cloud*0.4));
+      hRad.push(sc.isDay ? Math.max(0, 700 - Math.abs(i-6)*90) : 0);
+      hEt0.push(sc.isDay ? 0.18 : 0.02);
+      hVpd.push(Math.max(0.05, (sc.tempC - sc.dew)*0.06));
+      hSoilT.push(sc.tempC - 2);
+      hSoilM.push(0.22);
+    }
+
+    var dTime=[],dCode=[],dMax=[],dMin=[],dPop=[],dSunrise=[],dSunset=[],dUv=[],dWind=[];
+    for(var j=0;j<8;j++){
+      var day = new Date(today.getTime() + j*86400000);
+      dTime.push(isoLocal(day).slice(0,10));
+      dCode.push(sc.code);
+      dMax.push(sc.tempC + 3);
+      dMin.push(sc.tempC - 5);
+      dPop.push(sc.precip>0 ? 60 : 8);
+      dSunrise.push(isoLocal(new Date(day.getTime() + (6*60+15)*60000)));
+      dSunset.push(isoLocal(new Date(day.getTime() + (20*60+10)*60000)));
+      dUv.push(sc.uv);
+      dWind.push(sc.gustKmh);
+    }
+
+    return {
+      timezone: 'Test/Local',
+      utc_offset_seconds: -new Date().getTimezoneOffset()*60,
+      elevation: 42,
+      current: {
+        time: isoLocal(curTime),
+        temperature_2m: sc.tempC,
+        relative_humidity_2m: sc.humidity,
+        apparent_temperature: sc.tempC + (sc.humidity>75 ? 1.5 : -1),
+        is_day: sc.isDay,
+        weather_code: sc.code,
+        wind_speed_10m: sc.windKmh,
+        wind_direction_10m: 220,
+        wind_gusts_10m: sc.gustKmh,
+        pressure_msl: sc.pressure,
+        surface_pressure: sc.pressure - 6,
+        precipitation: sc.precip,
+        cloud_cover: sc.cloud,
+        dew_point_2m: sc.dew
+      },
+      hourly: {
+        time:hTime, temperature_2m:hTemp, precipitation_probability:hPop, weather_code:hCode,
+        uv_index:hUv, visibility:hVis, is_day:hIsDay, pressure_msl:hPress, dew_point_2m:hDew,
+        cape:hCape, freezing_level_height:hFreeze, cloud_cover_low:hCloudLow, cloud_cover_mid:hCloudMid,
+        cloud_cover_high:hCloudHigh, shortwave_radiation:hRad, et0_fao_evapotranspiration:hEt0,
+        vapour_pressure_deficit:hVpd, soil_temperature_0cm:hSoilT, soil_moisture_0_to_1cm:hSoilM
+      },
+      daily: {
+        time:dTime, weather_code:dCode, temperature_2m_max:dMax, temperature_2m_min:dMin,
+        precipitation_probability_max:dPop, sunrise:dSunrise, sunset:dSunset, uv_index_max:dUv, wind_speed_10m_max:dWind
+      }
+    };
+  }
+
+  function showTestSuggestions(){
+    els.suggestBox.innerHTML = TEST_SCENARIOS.map(function(sc, i){
+      return '<button data-test-i="'+i+'">🧪 '+sc.label+'</button>';
+    }).join('');
+    els.suggestBox.style.display = 'block';
+    Array.prototype.forEach.call(els.suggestBox.querySelectorAll('button[data-test-i]'), function(btn){
+      btn.addEventListener('click', function(){
+        var sc = TEST_SCENARIOS[parseInt(btn.getAttribute('data-test-i'),10)];
+        els.suggestBox.style.display = 'none';
+        els.searchInput.value = '';
+        loadTestScenario(sc);
+      });
+    });
+  }
+
+  function loadTestScenario(sc){
+    state.lat = 0; state.lon = 0;
+    state.place = { name: sc.label, region: 'Simulated data — not a live forecast', elevation: 42 };
+    state.data = buildScenarioData(sc);
+    state.aqi = { current: {
+      us_aqi: sc.precip>0 ? 62 : 28, pm2_5: sc.precip>0 ? 14 : 6, pm10: sc.precip>0 ? 22 : 11,
+      ozone: 48, nitrogen_dioxide: 12, sulphur_dioxide: 3, carbon_monoxide: 210
+    }};
+    render();
+    if(state.nerd) renderNerd();
+    setStatus('Test scenario — ' + sc.label.replace('Test — ',''));
+    els.app.style.display = 'block';
+  }
 
   function doSearch(q){
     fetch('https://geocoding-api.open-meteo.com/v1/search?name='+encodeURIComponent(q)+'&count=8&language=en&format=json')
@@ -623,12 +757,20 @@
     dusk:  ['#24272d','#2f333a','#3c4148'],
     night: ['#0a0b0e','#101216','#171a1f']
   };
+  // Flat grey for fog — no blue/warm gradient, just visibility-appropriate grey that dims at night
+  var GRADIENTS_FOG = {
+    dawn:  ['#9a9c9f','#9a9c9f','#9a9c9f'],
+    day:   ['#a8aaad','#a8aaad','#a8aaad'],
+    dusk:  ['#7d7f82','#7d7f82','#7d7f82'],
+    night: ['#3f4144','#3f4144','#3f4144']
+  };
   function setGradient(stops){
     els.sky.style.background = 'linear-gradient(180deg, '+stops[0]+' 0%, '+stops[1]+' 55%, '+stops[2]+' 100%)';
   }
   function gradientForCategory(category){
     if(category === 'overcast') return GRADIENTS_OVERCAST;
     if(category === 'storm') return GRADIENTS_STORM;
+    if(category === 'fog') return GRADIENTS_FOG;
     return GRADIENTS;
   }
 
