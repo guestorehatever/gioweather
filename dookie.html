@@ -1,0 +1,1311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>GioNews Weather</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Teko:wght@400;500;600;700&family=Barlow+Condensed:wght@400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+  /* ============ EDIT THESE TO RETARGET THE CHANNEL ============ */
+  /* Radar station id from radar.weather.gov/ridge/standard/  e.g. KLSX = St. Louis, MO (covers SE Missouri) */
+</style>
+<style>
+  :root{
+    --navy:#3a0a10;
+    --navy2:#6e1220;
+    --navy3:#a3202f;
+    --yellow:#ffd23f;
+    --cyan:#ff9248;
+    --white:#f4f8ff;
+    --dim:rgba(244,248,255,0.62);
+    --line:rgba(255,255,255,0.16);
+    --font-head:'Teko', sans-serif;
+    --font-body:'Barlow Condensed', sans-serif;
+    --font-mono:'Share Tech Mono', monospace;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;height:100%;}
+  body{
+    font-family:var(--font-body);
+    color:var(--white);
+    background:var(--navy);
+    overflow:hidden;
+    min-height:100vh; min-height:100dvh;
+    user-select:none;
+  }
+
+  /* diamond-grid backdrop, classic WeatherStar/Weatherscan texture */
+  #bg{
+    position:fixed; inset:0; z-index:0;
+    background:
+      radial-gradient(ellipse at 30% 0%, rgba(255,146,72,0.18), transparent 55%),
+      radial-gradient(ellipse at 100% 100%, rgba(163,32,47,0.9), transparent 60%),
+      linear-gradient(160deg, var(--navy) 0%, var(--navy2) 55%, var(--navy3) 100%);
+  }
+  #bg::before{
+    content:''; position:absolute; inset:0; opacity:0.14;
+    background-image:
+      linear-gradient(45deg, transparent 48%, rgba(255,255,255,0.5) 49%, rgba(255,255,255,0.5) 51%, transparent 52%),
+      linear-gradient(-45deg, transparent 48%, rgba(255,255,255,0.5) 49%, rgba(255,255,255,0.5) 51%, transparent 52%);
+    background-size:64px 64px;
+    animation:driftGrid 40s linear infinite;
+  }
+  @keyframes driftGrid{ from{background-position:0 0, 0 0;} to{background-position:640px 640px, -640px 640px;} }
+  @media (prefers-reduced-motion:reduce){ #bg::before{ animation:none; } }
+
+  #scanRoot{position:relative; z-index:1; display:flex; flex-direction:column; height:100vh; height:100dvh;
+    padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);}
+
+  /* ---------------- top row: sidebar + main ---------------- */
+  #topRow{flex:1; display:flex; min-height:0;}
+
+  #sidebar{
+    width:280px; flex:0 0 auto; background:rgba(38,8,12,0.55);
+    border-right:1px solid var(--line);
+    padding:16px 16px 10px; display:flex; flex-direction:column;
+    -webkit-backdrop-filter:blur(6px); backdrop-filter:blur(6px);
+  }
+  .sb-logo{font-family:var(--font-head); font-size:26px; font-weight:600; letter-spacing:.5px; line-height:1;}
+  .sb-logo span{display:block; color:var(--cyan); font-size:16px; letter-spacing:4px; font-weight:500;}
+  .sb-clock{font-family:var(--font-mono); font-size:44px; color:var(--yellow); margin-top:18px; letter-spacing:1px;}
+  .sb-date{font-family:var(--font-body); font-size:15px; color:var(--dim); text-transform:uppercase; letter-spacing:1.5px; margin-top:-4px;}
+
+  .sb-current{display:flex; align-items:center; gap:10px; margin-top:22px; padding-top:18px; border-top:1px dashed var(--line);}
+  .sb-icon svg{width:56px; height:56px; display:block;}
+  .sb-temp{font-family:var(--font-head); font-size:46px; font-weight:600; line-height:1;}
+  .sb-cond{font-family:var(--font-body); font-size:14px; color:var(--dim); text-transform:uppercase; letter-spacing:.5px;}
+
+  .sb-stats{margin-top:14px; display:grid; grid-template-columns:1fr 1fr; gap:8px 12px;}
+  .sb-stat{background:rgba(255,255,255,0.06); border:1px solid var(--line); border-radius:8px; padding:7px 9px;}
+  .sb-stat span{display:block; font-family:var(--font-mono); font-size:9px; color:var(--dim); letter-spacing:1px;}
+  .sb-stat b{font-family:var(--font-body); font-size:16px; font-weight:600;}
+
+  .sb-place{margin-top:auto; padding-top:14px; font-family:var(--font-body); font-size:13.5px; color:var(--cyan); font-weight:600; border-top:1px solid var(--line); line-height:1.3;}
+  .sb-place small{display:block; color:var(--dim); font-weight:400; font-size:11.5px; margin-top:2px;}
+
+  /* ---------------- main rotating panel area ---------------- */
+  #main{flex:1; position:relative; padding:20px 30px 8px; min-width:0;}
+  .panel{
+    position:absolute; inset:20px 30px 8px; opacity:0; pointer-events:none;
+    transition:opacity 0.6s ease;
+    display:flex; flex-direction:column;
+  }
+  .panel.active{opacity:1; pointer-events:auto;}
+
+  .seg-title{font-family:var(--font-head); font-size:34px; font-weight:600; color:var(--yellow); letter-spacing:1px; line-height:1;}
+  .seg-sub{font-family:var(--font-mono); font-size:12px; color:var(--dim); letter-spacing:2px; text-transform:uppercase; margin-top:4px;}
+
+  /* bumper */
+  #bumper{align-items:center; justify-content:center; text-align:center;}
+  #bumper .bump-label{font-family:var(--font-mono); font-size:14px; letter-spacing:5px; color:var(--cyan); text-transform:uppercase;}
+  #bumper .bump-name{font-family:var(--font-head); font-size:64px; font-weight:700; color:var(--white); margin-top:6px;}
+  #bumper svg{width:90px; height:90px; margin:14px auto 0; display:block;}
+
+  /* current conditions */
+  .cc-body{flex:1; display:flex; align-items:center; gap:40px; margin-top:10px;}
+  .cc-icon svg{width:150px; height:150px;}
+  .cc-temp{font-family:var(--font-head); font-size:150px; font-weight:600; line-height:1;}
+  .cc-cond{font-family:var(--font-body); font-size:24px; color:var(--dim); margin-top:-6px;}
+  .cc-grid{display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-top:auto; margin-bottom:10px;}
+  .cc-cell{background:rgba(255,255,255,0.07); border:1px solid var(--line); border-radius:10px; padding:10px 14px;}
+  .cc-cell span{display:block; font-family:var(--font-mono); font-size:10.5px; color:var(--dim); letter-spacing:1.5px;}
+  .cc-cell b{font-family:var(--font-body); font-size:22px; font-weight:600;}
+
+  /* today's forecast */
+  .tf-body{flex:1; display:flex; flex-direction:column; justify-content:center; gap:20px;}
+  .tf-headline{font-family:var(--font-body); font-size:30px; font-weight:500; max-width:820px; line-height:1.25;}
+  .tf-headline b{color:var(--yellow);}
+  .tf-row{display:flex; gap:50px; align-items:center;}
+  .tf-icon svg{width:90px; height:90px;}
+  .tf-hilo{font-family:var(--font-head); font-size:52px; font-weight:600;}
+  .tf-hilo .hi{color:var(--coral, #ff8f6b);}
+  .tf-hilo .lo{color:var(--cyan); margin-left:18px;}
+  .tf-extra{display:flex; gap:34px; font-family:var(--font-body); font-size:17px; color:var(--dim);}
+  .tf-extra b{color:var(--white); font-weight:600;}
+  .rot-dots{display:flex; gap:8px; margin-top:auto; margin-bottom:2px;}
+  .rot-dot{width:8px; height:8px; border-radius:50%; background:rgba(255,255,255,0.22); transition:all 0.3s ease;}
+  .rot-dot.active{background:var(--yellow); box-shadow:0 0 8px rgba(255,210,63,0.6);}
+
+  /* extended forecast */
+  .ef-grid{flex:1; display:flex; align-items:center; gap:14px; margin-top:14px;}
+  .ef-day{flex:1; background:rgba(255,255,255,0.07); border:1px solid var(--line); border-radius:14px;
+    padding:16px 10px; text-align:center; display:flex; flex-direction:column; align-items:center; gap:6px;}
+  .ef-day .dname{font-family:var(--font-head); font-size:22px; font-weight:600; letter-spacing:.5px;}
+  .ef-day svg{width:52px; height:52px;}
+  .ef-day .hi{font-family:var(--font-body); font-size:22px; font-weight:700;}
+  .ef-day .lo{font-family:var(--font-body); font-size:16px; color:var(--dim);}
+  .ef-day .pop{font-family:var(--font-mono); font-size:11px; color:var(--cyan); margin-top:2px;}
+
+  /* radar */
+  .radar-body{flex:1; display:flex; flex-direction:column; min-height:0; margin-top:6px; gap:8px;}
+  #radarMapWrap{flex:1; min-height:0; border-radius:14px; border:1px solid var(--line); background:#03122c; overflow:hidden; position:relative;
+    display:flex; align-items:center; justify-content:center;}
+  .radar-img{width:100%; height:100%; object-fit:contain; display:block;}
+  .radar-note{font-family:var(--font-mono); font-size:11px; color:var(--dim); letter-spacing:1px; text-transform:uppercase;}
+  .radar-coverage{font-family:var(--font-body); font-size:13px; color:var(--cyan); font-weight:600; letter-spacing:.5px;}
+  .radar-fallback-note{display:none; position:absolute; inset:0; align-items:center; justify-content:center; text-align:center;
+    font-family:var(--font-body); font-size:15px; color:var(--dim); padding:20px;}
+
+  /* regional conditions */
+  .rg-grid{flex:1; display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-top:14px;}
+  .rg-card{background:rgba(255,255,255,0.07); border:1px solid var(--line); border-radius:14px; padding:14px; display:flex; flex-direction:column; gap:4px;}
+  .rg-card .rg-top{display:flex; align-items:center; justify-content:space-between;}
+  .rg-card .rg-name{font-family:var(--font-head); font-size:22px; font-weight:600;}
+  .rg-card .rg-state{font-family:var(--font-mono); font-size:11px; color:var(--cyan); letter-spacing:1.5px;}
+  .rg-card .rg-mid{display:flex; align-items:center; gap:10px; margin-top:4px;}
+  .rg-card svg{width:40px; height:40px;}
+  .rg-card .rg-temp{font-family:var(--font-head); font-size:38px; font-weight:600;}
+  .rg-card .rg-cond{font-family:var(--font-body); font-size:13px; color:var(--dim);}
+
+  /* sidebar extras */
+  .sb-coverage{margin-top:12px; padding-top:12px; border-top:1px dashed var(--line);}
+  .sb-coverage span{display:block; font-family:var(--font-mono); font-size:9px; color:var(--dim); letter-spacing:1.5px; margin-bottom:5px;}
+  .sb-states{display:flex; flex-wrap:wrap; gap:5px;}
+  .sb-state-chip{font-family:var(--font-mono); font-size:11px; background:rgba(255,146,72,0.14); color:var(--cyan);
+    border:1px solid rgba(255,146,72,0.35); border-radius:6px; padding:2px 7px; letter-spacing:.5px; transition:all 0.3s ease;}
+  .sb-state-chip.active{background:var(--yellow); color:#2b0705; border-color:var(--yellow); font-weight:700; box-shadow:0 0 10px rgba(255,210,63,0.55);}
+  .sb-hilo-region{margin-top:10px; display:flex; justify-content:space-between; font-family:var(--font-body); font-size:12.5px; color:var(--dim);}
+  .sb-hilo-region b{color:var(--white); font-family:var(--font-mono); font-size:13px;}
+
+  /* mini regional strip inside current conditions */
+  .cc-region-strip{display:flex; gap:8px; overflow-x:auto; margin-top:14px; padding-bottom:2px;}
+  .cc-region-chip{flex:0 0 auto; background:rgba(255,255,255,0.06); border:1px solid var(--line); border-radius:8px;
+    padding:6px 10px; font-family:var(--font-body); font-size:13px; display:flex; align-items:center; gap:6px; white-space:nowrap;}
+  .cc-region-chip svg{width:18px; height:18px;}
+  .cc-region-chip b{font-weight:700;}
+  .cc-region-chip .st{color:var(--cyan); font-family:var(--font-mono); font-size:10px; margin-left:2px;}
+  .cc-region-chip.active{background:rgba(255,210,63,0.16); border-color:var(--yellow);}
+
+  /* almanac */
+  .am-grid{flex:1; display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; margin-top:16px;}
+  .am-card{background:rgba(255,255,255,0.07); border:1px solid var(--line); border-radius:14px; padding:16px;}
+  .am-card h4{font-family:var(--font-mono); font-size:11px; letter-spacing:1.6px; color:var(--dim); text-transform:uppercase; margin:0 0 10px;}
+  .am-row{display:flex; justify-content:space-between; padding:6px 0; border-top:1px dashed var(--line); font-family:var(--font-body); font-size:16px;}
+  .am-row:first-of-type{border-top:none;}
+  .am-row b{font-weight:600;}
+  .am-moon{display:flex; align-items:center; gap:12px;}
+  .am-moon .em{font-size:44px;}
+
+  /* bulletin */
+  .bl-body{flex:1; display:flex; flex-direction:column; gap:12px; margin-top:12px; overflow:hidden;}
+  .bl-event{font-family:var(--font-head); font-size:34px; font-weight:600; color:#ff8f6b;}
+  .bl-meta{font-family:var(--font-mono); font-size:12px; color:var(--dim); letter-spacing:1px; text-transform:uppercase;}
+  .bl-text{font-family:var(--font-body); font-size:18px; line-height:1.4; color:var(--white); max-width:900px;}
+  .bl-instr{font-family:var(--font-body); font-size:18px; font-weight:700; color:var(--yellow);}
+
+  /* ad break */
+  #segAd{inset:0;}
+  .ad-body{flex:1; display:flex; min-height:0;}
+  .ad-frame{flex:1; min-height:0; min-width:0; width:100%; position:relative; overflow:hidden; border-radius:14px; border:1px solid var(--line); background:#03122c;}
+  .ad-frame img{position:absolute; inset:0; width:100%; height:100%; object-fit:contain; display:block;}
+
+  /* ---------------- bottom ticker (LDL) ---------------- */
+  #ticker{
+    flex:0 0 auto; height:52px; background:rgba(2,10,26,0.82); border-top:2px solid var(--cyan);
+    display:flex; align-items:center; overflow:hidden; position:relative;
+  }
+  #tickerBadge{flex:0 0 auto; background:var(--yellow); color:#101a2e; font-family:var(--font-head); font-weight:700;
+    font-size:18px; padding:0 20px; height:100%; display:flex; align-items:center; letter-spacing:.5px;}
+  #tickerTrack{white-space:nowrap; font-family:var(--font-mono); font-size:16px; padding-left:100%;
+    animation:tickerScroll 34s linear infinite;}
+  @keyframes tickerScroll{ from{transform:translateX(0);} to{transform:translateX(-100%);} }
+  @media (prefers-reduced-motion:reduce){ #tickerTrack{animation:none; padding-left:20px;} }
+
+  #blackout.active{opacity:1; pointer-events:auto;}
+
+  /* ---------------- EAS mic-triggered interrupt ---------------- */
+  #easOverlay{
+    position:fixed; inset:0; z-index:950; background:var(--yellow); color:#1a1400;
+    opacity:0; pointer-events:none; transition:opacity 0.25s ease;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center;
+    font-family:var(--font-body);
+  }
+  #easOverlay.active{opacity:1; pointer-events:auto; animation:easFlash 1s steps(2,end) infinite;}
+  @keyframes easFlash{ 50%{ background:#fff1a8; } }
+  @media (prefers-reduced-motion:reduce){ #easOverlay.active{ animation:none; } }
+  #easOverlay .eas-badge{font-family:var(--font-mono); font-size:14px; letter-spacing:5px; text-transform:uppercase; margin-bottom:10px;}
+  #easOverlay .eas-main{font-family:var(--font-head); font-size:56px; font-weight:700; letter-spacing:1px; line-height:1.05;}
+  #easOverlay .eas-sub{font-family:var(--font-body); font-size:18px; margin-top:14px; max-width:640px;}
+  #easOverlay .eas-mic{font-family:var(--font-mono); font-size:12px; margin-top:26px; opacity:0.7; letter-spacing:1px;}
+
+  @media (max-width:760px){
+    #sidebar{width:200px; padding:12px;}
+    .sb-clock{font-size:32px;}
+    .sb-temp{font-size:34px;}
+    .sb-icon svg{width:40px; height:40px;}
+    #main{padding:14px 16px 6px;}
+    .panel{inset:14px 16px 6px;}
+    .seg-title{font-size:24px;}
+    .cc-temp{font-size:80px;}
+    .cc-icon svg{width:90px; height:90px;}
+    .cc-grid{grid-template-columns:repeat(2,1fr);}
+    .ef-grid{flex-wrap:wrap;}
+    .ef-day{min-width:30%;}
+    .am-grid{grid-template-columns:1fr;}
+  }
+</style>
+</head>
+<body>
+
+<div id="ttsGate" style="position:fixed;inset:0;z-index:999;display:flex;align-items:center;justify-content:center;
+  background:rgba(6,2,4,0.86);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);cursor:pointer;
+  font-family:'Barlow Condensed',sans-serif;color:#f4f8ff;text-align:center;">
+  <div>
+    <div style="font-family:'Teko',sans-serif;font-size:42px;font-weight:600;letter-spacing:1px;">GIONEWS WEATHER</div>
+    <div style="font-size:18px;color:rgba(244,248,255,0.75);margin-top:6px;">Tap anywhere to start the broadcast</div>
+  </div>
+</div>
+
+<div id="blackout" style="position:fixed;inset:0;z-index:900;background:#000;opacity:0;pointer-events:none;transition:opacity 0.4s ease;"></div>
+
+<div id="easOverlay">
+  <div class="eas-badge">Emergency Alert System</div>
+  <div class="eas-main">ADMINISTRATIVE&nbsp;MESSAGE</div>
+  <div class="eas-sub">This is an important alert. Please listen to the following message.</div>
+  <div class="eas-mic">MIC MONITOR ACTIVE</div>
+</div>
+
+<div id="bg"></div>
+
+<div id="scanRoot">
+  <div id="topRow">
+
+    <div id="sidebar">
+      <div class="sb-logo">GIONEWS<span>WEATHER</span></div>
+      <div class="sb-clock" id="sbClock">--:--</div>
+      <div class="sb-date" id="sbDate">-- --- --</div>
+
+      <div class="sb-current">
+        <div class="sb-icon" id="sbIcon"></div>
+        <div>
+          <div class="sb-temp" id="sbTemp">--°</div>
+          <div class="sb-cond" id="sbCond">Loading</div>
+        </div>
+      </div>
+
+      <div class="sb-stats">
+        <div class="sb-stat"><span>FEELS</span><b id="sbFeels">--°</b></div>
+        <div class="sb-stat"><span>WIND</span><b id="sbWind">--</b></div>
+        <div class="sb-stat"><span>HUMIDITY</span><b id="sbHum">--</b></div>
+        <div class="sb-stat"><span>PRESSURE</span><b id="sbPress">--</b></div>
+      </div>
+
+      <div class="sb-coverage">
+        <span>REGIONAL COVERAGE</span>
+        <div class="sb-states">
+          <span class="sb-state-chip">MO</span><span class="sb-state-chip">IL</span><span class="sb-state-chip">OK</span>
+          <span class="sb-state-chip">AR</span><span class="sb-state-chip">IA</span><span class="sb-state-chip">KS</span>
+        </div>
+        <div class="sb-hilo-region"><span>Region high</span><b id="sbRegHigh">--</b></div>
+        <div class="sb-hilo-region"><span>Region low</span><b id="sbRegLow">--</b></div>
+      </div>
+
+      <div class="sb-place" id="sbPlace">Locating…<small id="sbRegion"></small></div>
+    </div>
+
+    <div id="main">
+
+      <div id="bumper" class="panel active">
+        <div class="bump-label">Up Next</div>
+        <div id="bumpIcon"></div>
+        <div class="bump-name" id="bumpName">GioNews Weather</div>
+      </div>
+
+      <div id="segCurrent" class="panel">
+        <div class="seg-title">CURRENT CONDITIONS</div>
+        <div class="seg-sub" id="ccPlace">—</div>
+        <div class="cc-body">
+          <div class="cc-icon" id="ccIcon"></div>
+          <div>
+            <div class="cc-temp" id="ccTemp">--°</div>
+            <div class="cc-cond" id="ccCond">—</div>
+          </div>
+        </div>
+        <div class="cc-grid" id="ccGrid"></div>
+        <div class="cc-region-strip" id="ccRegionStrip"></div>
+        <div class="rot-dots" id="ccDots"></div>
+      </div>
+
+      <div id="segToday" class="panel">
+        <div class="seg-title">TODAY'S FORECAST</div>
+        <div class="seg-sub" id="tfPlace">—</div>
+        <div class="tf-body">
+          <div class="tf-headline" id="tfHeadline">—</div>
+          <div class="tf-row">
+            <div class="tf-icon" id="tfIcon"></div>
+            <div class="tf-hilo" id="tfHilo"><span class="hi">H --°</span><span class="lo">L --°</span></div>
+          </div>
+          <div class="tf-extra" id="tfExtra"></div>
+        </div>
+        <div class="rot-dots" id="tfDots"></div>
+      </div>
+
+      <div id="segExtended" class="panel">
+        <div class="seg-title">EXTENDED FORECAST</div>
+        <div class="seg-sub" id="efPlace">5-Day Outlook</div>
+        <div class="ef-grid" id="efGrid"></div>
+        <div class="rot-dots" id="efDots"></div>
+      </div>
+
+      <div id="segRegional" class="panel">
+        <div class="seg-title">REGIONAL CONDITIONS</div>
+        <div class="seg-sub">Missouri · Illinois · Oklahoma · Arkansas · Iowa · Kansas</div>
+        <div class="rg-grid" id="rgGrid"></div>
+      </div>
+
+      <div id="segRadar" class="panel">
+        <div class="seg-title">REGIONAL RADAR</div>
+        <div class="seg-sub" id="radarLabel">Live precipitation · Open-Meteo</div>
+        <div class="radar-body">
+          <div class="radar-coverage">MISSOURI · ILLINOIS · OKLAHOMA · ARKANSAS · IOWA · KANSAS</div>
+          <div id="radarMapWrap">
+            <img class="radar-img" id="radarImg" alt="National Weather Service regional radar mosaic">
+          </div>
+        </div>
+        <div class="radar-note">Precipitation overlay via Open-Meteo · updates each cycle</div>
+      </div>
+
+      <div id="segAlmanac" class="panel">
+        <div class="seg-title">ALMANAC</div>
+        <div class="seg-sub" id="amPlace">—</div>
+        <div class="am-grid">
+          <div class="am-card">
+            <h4>Sun</h4>
+            <div class="am-row"><span>Sunrise</span><b id="amSunrise">--</b></div>
+            <div class="am-row"><span>Sunset</span><b id="amSunset">--</b></div>
+            <div class="am-row"><span>Day length</span><b id="amDaylen">--</b></div>
+            <div class="am-row"><span>Peak UV</span><b id="amUv">--</b></div>
+          </div>
+          <div class="am-card">
+            <h4>Moon</h4>
+            <div class="am-moon"><div class="em" id="amMoonEmoji">🌑</div><div><div id="amMoonName">--</div><div style="font-size:12px;color:var(--dim);" id="amMoonPct">--</div></div></div>
+            <div class="am-row" style="margin-top:8px;"><span>Age</span><b id="amMoonAge">--</b></div>
+          </div>
+          <div class="am-card">
+            <h4>Pressure trend</h4>
+            <div class="am-row"><span>Sea level</span><b id="amPress">--</b></div>
+            <div class="am-row"><span>3-hr change</span><b id="amTrend">--</b></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="segBulletin" class="panel">
+        <div class="seg-title">WEATHER BULLETIN</div>
+        <div class="seg-sub" id="blMeta">—</div>
+        <div class="bl-body">
+          <div class="bl-event" id="blEvent">—</div>
+          <div class="bl-text" id="blHeadline"></div>
+          <div class="bl-instr" id="blInstr"></div>
+        </div>
+      </div>
+
+      <div id="segAd" class="panel">
+        <div class="ad-body">
+          <div class="ad-frame">
+            <img src="ad9.png" alt="GioWeather advertisement">
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div id="ticker">
+    <div id="tickerBadge">GIONEWS WX</div>
+    <div id="tickerTrack">Loading conditions…</div>
+  </div>
+</div>
+
+<script>
+(function(){
+  /* ============ CONFIG — edit to retarget the channel ============ */
+  var DEFAULT_PLACE = { name:'Farmington', region:'Missouri, United States', lat:37.7859, lon:-90.4243 };
+  var RADAR_FALLBACK_URL = 'https://radar.weather.gov/ridge/standard/CONUS_loop.gif'; // used only if the Open-Meteo map fails to load
+  var REGIONAL_CITIES = [
+    { name:'St. Louis',     state:'MO', lat:38.6270, lon:-90.1994 },
+    { name:'Springfield',   state:'IL', lat:39.7817, lon:-89.6501 },
+    { name:'Oklahoma City', state:'OK', lat:35.4676, lon:-97.5164 },
+    { name:'Little Rock',   state:'AR', lat:34.7465, lon:-92.2896 },
+    { name:'Des Moines',    state:'IA', lat:41.5868, lon:-93.6250 },
+    { name:'Wichita',       state:'KS', lat:37.6872, lon:-97.3301 }
+  ];
+  // Maps a geocoded state/region name back to the abbreviation used by the sidebar chips.
+  var STATE_NAME_TO_ABBR = { 'Missouri':'MO', 'Illinois':'IL', 'Oklahoma':'OK', 'Arkansas':'AR', 'Iowa':'IA', 'Kansas':'KS' };
+  var REGION_BOUNDS = [[-102.6, 32.8],[-87.0, 43.7]]; // MO/IL/OK/AR/IA/KS bounding box
+  var SEGMENT_ORDER = ['segCurrent','segToday','segExtended','segRegional','segRadar','segAlmanac','segAd']; // segBulletin is spliced in only when an alert is active
+  var SEGMENT_LABEL = { segCurrent:'Current Conditions', segToday:"Today's Forecast", segExtended:'Extended Forecast', segRegional:'Regional Conditions', segRadar:'Regional Radar', segAlmanac:'Almanac', segBulletin:'Weather Bulletin', segAd:'GioWeather' };
+  var SEGMENT_DURATION = { segRegional:9500, segRadar:13000, segAlmanac:8500, segBulletin:9500, segAd:8000 }; // segCurrent/segToday/segExtended are city-rotated instead — see CITY_ROTATE_MS
+  var BUMPER_DURATION = 2600;
+  var DATA_REFRESH_MS = 10*60*1000; // 10 min
+  var ALERT_REFRESH_MS = 3*60*1000; // 3 min
+  var CITY_ROTATE_MS = 4500;       // how long each city shows within a rotating main segment
+  var SIDEBAR_ROTATE_MS = 10000;   // how often the sidebar itself switches to a new city
+
+  var state = { place: DEFAULT_PLACE, data:null, regional:null, alerts:[], segIdx:-1, cycle:[], mapInited:false, cityList:[], audioUnlocked:false, broadcastStarted:false, interrupted:false, easActive:false };
+
+  var els = {};
+  ['sbClock','sbDate','sbIcon','sbTemp','sbCond','sbFeels','sbWind','sbHum','sbPress','sbPlace','sbRegion','sbRegHigh','sbRegLow',
+   'bumpIcon','bumpName','ccPlace','ccIcon','ccTemp','ccCond','ccGrid','ccRegionStrip','ccDots',
+   'tfPlace','tfHeadline','tfIcon','tfHilo','tfExtra','tfDots',
+   'efPlace','efGrid','efDots','rgGrid','radarLabel','radarImg',
+   'amPlace','amSunrise','amSunset','amDaylen','amUv','amMoonEmoji','amMoonName','amMoonPct','amMoonAge','amPress','amTrend',
+   'blMeta','blEvent','blHeadline','blInstr','tickerTrack'
+  ].forEach(function(id){ els[id] = document.getElementById(id); });
+
+  var panels = {};
+  SEGMENT_ORDER.concat(['segBulletin']).forEach(function(id){ panels[id] = document.getElementById(id); });
+  var bumperEl = document.getElementById('bumper');
+
+  /* ---------- icon set (compact SVGs) ---------- */
+  var WMO = {
+    0:['Clear','sun'], 1:['Mostly Clear','sun-cloud'], 2:['Partly Cloudy','sun-cloud'], 3:['Overcast','cloud'],
+    45:['Foggy','fog'], 48:['Icy Fog','fog'],
+    51:['Light Drizzle','drizzle'], 53:['Drizzle','drizzle'], 55:['Heavy Drizzle','drizzle'],
+    56:['Freezing Drizzle','drizzle'], 57:['Freezing Drizzle','drizzle'],
+    61:['Light Rain','rain'], 63:['Rain','rain'], 65:['Heavy Rain','rain'],
+    66:['Freezing Rain','rain'], 67:['Freezing Rain','rain'],
+    71:['Light Snow','snow'], 73:['Snow','snow'], 75:['Heavy Snow','snow'], 77:['Snow Grains','snow'],
+    80:['Rain Showers','rain'], 81:['Rain Showers','rain'], 82:['Violent Showers','rain'],
+    85:['Snow Showers','snow'], 86:['Snow Showers','snow'],
+    95:['Thunderstorms','storm'], 96:['Thunderstorms','storm'], 99:['Severe Storms','storm']
+  };
+  function wmoInfo(code, isDay){
+    var e = WMO[code] || ['Unknown','cloud'];
+    if(e[1]==='sun' && !isDay) return ['Clear','moon'];
+    if(e[1]==='sun-cloud' && !isDay) return [e[0],'cloud-moon'];
+    return e;
+  }
+  function icon(name){
+    var s = {
+      sun: '<circle cx="12" cy="12" r="4.4" fill="#ffd23f"/><g stroke="#ffd23f" stroke-width="1.6" stroke-linecap="round"><line x1="12" y1="1.5" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="22.5"/><line x1="1.5" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="22.5" y2="12"/><line x1="4.4" y1="4.4" x2="6.1" y2="6.1"/><line x1="17.9" y1="17.9" x2="19.6" y2="19.6"/><line x1="4.4" y1="19.6" x2="6.1" y2="17.9"/><line x1="17.9" y1="6.1" x2="19.6" y2="4.4"/></g>',
+      moon: '<path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a6.6 6.6 0 0 0 10.5 10.5z" fill="#e4e8fb"/>',
+      cloud: '<path d="M7 18a4.5 4.5 0 0 1-.5-9 5.5 5.5 0 0 1 10.6-1.7A4.2 4.2 0 0 1 17.5 18H7z" fill="#f2f5fa" opacity="0.9"/>',
+      'sun-cloud': '<circle cx="8" cy="8.5" r="3.4" fill="#ffd23f"/><path d="M9 19a4.2 4.2 0 0 1-.4-8.4 5.1 5.1 0 0 1 9.8-1.5A3.9 3.9 0 0 1 18 19H9z" fill="#f2f5fa" opacity="0.92"/>',
+      'cloud-moon': '<circle cx="8" cy="8.5" r="3" fill="#e4e8fb"/><path d="M9 19a4.2 4.2 0 0 1-.4-8.4 5.1 5.1 0 0 1 9.8-1.5A3.9 3.9 0 0 1 18 19H9z" fill="#f2f5fa" opacity="0.92"/>',
+      fog: '<path d="M4 9h16M4 13h16M4 17h10" stroke="#e2e6ee" stroke-width="1.7" stroke-linecap="round"/>',
+      drizzle: '<path d="M7 14.5a4.2 4.2 0 0 1-.4-8.3A5 5 0 0 1 16.2 5a3.9 3.9 0 0 1 .8 7.7H7z" fill="#dde4ee"/><g stroke="#4fd8ff" stroke-width="1.5" stroke-linecap="round"><line x1="8" y1="18" x2="7" y2="21"/><line x1="12" y1="18" x2="11" y2="21"/><line x1="16" y1="18" x2="15" y2="21"/></g>',
+      rain: '<path d="M7 13.5a4.2 4.2 0 0 1-.4-8.3A5 5 0 0 1 16.2 4a3.9 3.9 0 0 1 .8 7.5H7z" fill="#d7deea"/><g stroke="#4fd8ff" stroke-width="1.7" stroke-linecap="round"><line x1="7.5" y1="17" x2="6" y2="22"/><line x1="12" y1="17" x2="10.5" y2="22"/><line x1="16.5" y1="17" x2="15" y2="22"/></g>',
+      snow: '<path d="M7 13.5a4.2 4.2 0 0 1-.4-8.3A5 5 0 0 1 16.2 4a3.9 3.9 0 0 1 .8 7.5H7z" fill="#dde4ee"/><g stroke="#ffffff" stroke-width="1.6" stroke-linecap="round"><line x1="7" y1="17" x2="7" y2="22"/><line x1="4.7" y1="18.3" x2="9.3" y2="20.7"/><line x1="9.3" y1="18.3" x2="4.7" y2="20.7"/><line x1="16" y1="17" x2="16" y2="22"/><line x1="13.7" y1="18.3" x2="18.3" y2="20.7"/><line x1="18.3" y1="18.3" x2="13.7" y2="20.7"/></g>',
+      storm: '<path d="M7 13a4.2 4.2 0 0 1-.4-8.3A5 5 0 0 1 16.2 3.5a3.9 3.9 0 0 1 .8 7.5H7z" fill="#b9c2d1"/><path d="M13 14l-3.2 5h3l-1.5 4.5L16 17h-3l1.5-3z" fill="#ffd23f"/>'
+    };
+    return '<svg viewBox="0 0 24 24">'+(s[name]||s.cloud)+'</svg>';
+  }
+
+  function degToCompass(deg){
+    var dirs = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
+    return dirs[Math.round(deg / 22.5) % 16];
+  }
+  function fmtTime(iso){ return new Date(iso).toLocaleTimeString('en-US', {hour:'numeric', minute:'2-digit'}); }
+  function nowHHMM(tz){
+    try{ return new Date().toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit', timeZone: tz}); }
+    catch(e){ return new Date().toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit'}); }
+  }
+  function kmhToMph(kmh){ return kmh!=null ? Math.round(kmh*0.621371) : null; }
+  function dotsHtml(count, idx){
+    var out = '';
+    for(var i=0;i<count;i++){ out += '<div class="rot-dot'+(i===idx?' active':'')+'"></div>'; }
+    return out;
+  }
+
+  function moonPhaseInfo(date){
+    var synodic = 29.530588853;
+    var knownNewMoon = Date.UTC(2000,0,6,18,14,0);
+    var days = (date.getTime() - knownNewMoon) / 86400000;
+    var age = days % synodic;
+    if(age < 0) age += synodic;
+    var illum = (1 - Math.cos(2*Math.PI*age/synodic)) / 2;
+    var names = [
+      [1.84566,'New Moon','🌑'], [5.53699,'Waxing Crescent','🌒'], [9.22831,'First Quarter','🌓'],
+      [12.91963,'Waxing Gibbous','🌔'], [16.61096,'Full Moon','🌕'], [20.30228,'Waning Gibbous','🌖'],
+      [23.99361,'Last Quarter','🌗'], [27.68493,'Waning Crescent','🌘'], [29.530588853,'New Moon','🌑']
+    ];
+    var pick = names[0];
+    for(var i=0;i<names.length;i++){ if(age < names[i][0]){ pick = names[i]; break; } }
+    return { age: age, illum: illum, name: pick[1], emoji: pick[2] };
+  }
+
+  function pressureTrend(hourly, hourIdx){
+    if(!hourly.pressure_msl) return null;
+    var prevIdx = hourIdx - 3;
+    if(prevIdx < 0) return null;
+    var diff = hourly.pressure_msl[hourIdx] - hourly.pressure_msl[prevIdx];
+    var arrow = '→', desc = 'Steady';
+    if(diff >= 1.6){ arrow = '↑↑'; desc = 'Rising Rapidly'; }
+    else if(diff >= 0.6){ arrow = '↑'; desc = 'Rising'; }
+    else if(diff <= -1.6){ arrow = '↓↓'; desc = 'Falling Rapidly'; }
+    else if(diff <= -0.6){ arrow = '↓'; desc = 'Falling'; }
+    return { diff: diff, arrow: arrow, desc: desc };
+  }
+
+  /* ---------- clock (always running) ---------- */
+  function tickClock(){
+    var tz = state.data ? state.data.timezone : undefined;
+    var d = new Date();
+    els.sbClock.textContent = nowHHMM(tz);
+    els.sbDate.textContent = d.toLocaleDateString('en-US', {weekday:'long', month:'short', day:'numeric'});
+  }
+  setInterval(tickClock, 1000);
+  tickClock();
+
+  /* ---------- data loading ---------- */
+  function loadWeather(place){
+    place.stateAbbr = STATE_NAME_TO_ABBR[(place.region||'').split(',')[0].trim()] || '';
+    state.place = place;
+
+    var url = 'https://api.open-meteo.com/v1/forecast?latitude='+place.lat+'&longitude='+place.lon+
+      '&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,pressure_msl,precipitation,cloud_cover,dew_point_2m'+
+      '&hourly=pressure_msl'+
+      '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset,uv_index_max'+
+      '&temperature_unit=fahrenheit&timezone=auto&forecast_days=7';
+
+    fetch(url).then(function(r){ if(!r.ok) throw new Error('bad'); return r.json(); })
+      .then(function(d){
+        state.data = d;
+        renderAlmanacAndClockDependent();
+        buildTicker();
+        buildCityList();
+        ensureSidebarRotation();
+      })
+      .catch(function(){
+        els.tickerTrack.textContent = 'GioNews Weather is having trouble reaching the forecast service — retrying shortly…';
+      });
+
+    var alertUrl = 'https://api.weather.gov/alerts/active?point=' + place.lat.toFixed(4) + ',' + place.lon.toFixed(4);
+    fetch(alertUrl, {headers:{'Accept':'application/geo+json'}}).then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(d){
+        state.alerts = (d && d.features) ? d.features : [];
+        rebuildCycle();
+      }).catch(function(){ state.alerts = []; rebuildCycle(); });
+  }
+
+  function loadRegional(){
+    var lats = REGIONAL_CITIES.map(function(c){ return c.lat; }).join(',');
+    var lons = REGIONAL_CITIES.map(function(c){ return c.lon; }).join(',');
+    var url = 'https://api.open-meteo.com/v1/forecast?latitude='+lats+'&longitude='+lons+
+      '&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,pressure_msl,precipitation,cloud_cover,dew_point_2m'+
+      '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,uv_index_max'+
+      '&temperature_unit=fahrenheit&timezone=auto&forecast_days=7';
+    fetch(url).then(function(r){ if(!r.ok) throw new Error('bad'); return r.json(); })
+      .then(function(d){
+        // Multiple coordinates -> Open-Meteo returns an array of result objects in the same order requested
+        state.regional = Array.isArray(d) ? d : [d];
+        renderRegionalGrid();
+        buildTicker();
+        buildCityList();
+        ensureSidebarRotation();
+      }).catch(function(){ /* leave prior regional data in place */ });
+  }
+
+  function renderRegionalGrid(){
+    if(!state.regional) return;
+    var html = '';
+    var temps = [];
+    state.regional.forEach(function(r, i){
+      var city = REGIONAL_CITIES[i];
+      var cur = r.current;
+      if(!cur) return;
+      var info = wmoInfo(cur.weather_code, cur.is_day===1);
+      temps.push(Math.round(cur.temperature_2m));
+      html += '<div class="rg-card"><div class="rg-top"><div class="rg-name">'+city.name+'</div><div class="rg-state">'+city.state+'</div></div>' +
+        '<div class="rg-mid">' + icon(info[1]) + '<div class="rg-temp">'+Math.round(cur.temperature_2m)+'°</div></div>' +
+        '<div class="rg-cond">'+info[0]+'</div></div>';
+    });
+    els.rgGrid.innerHTML = html;
+
+    var stripHtml = '';
+    state.regional.forEach(function(r, i){
+      var city = REGIONAL_CITIES[i];
+      var cur = r.current;
+      if(!cur) return;
+      var info = wmoInfo(cur.weather_code, cur.is_day===1);
+      stripHtml += '<div class="cc-region-chip" data-city="'+city.name+'">'+icon(info[1])+'<b>'+Math.round(cur.temperature_2m)+'°</b>'+city.name+'<span class="st">'+city.state+'</span></div>';
+    });
+    els.ccRegionStrip.innerHTML = stripHtml;
+
+    if(temps.length){
+      els.sbRegHigh.textContent = Math.max.apply(null, temps) + '°';
+      els.sbRegLow.textContent = Math.min.apply(null, temps) + '°';
+    }
+  }
+
+  /* ---------- shared city list: home place + all 6 regional cities ---------- */
+  function buildCityList(){
+    var list = [];
+    if(state.data && state.data.current && state.data.daily){
+      list.push({
+        name: state.place.name,
+        state: state.place.stateAbbr || '',
+        region: state.place.region || '',
+        current: state.data.current,
+        daily: state.data.daily
+      });
+    }
+    if(state.regional){
+      state.regional.forEach(function(r, i){
+        if(!r.current || !r.daily) return;
+        var city = REGIONAL_CITIES[i];
+        list.push({ name: city.name, state: city.state, region: city.state, current: r.current, daily: r.daily });
+      });
+    }
+    state.cityList = list;
+    maybeStartBroadcast();
+  }
+
+  function highlightState(stateAbbr){
+    Array.prototype.forEach.call(document.querySelectorAll('.sb-state-chip'), function(chip){
+      if(stateAbbr && chip.textContent.trim() === stateAbbr) chip.classList.add('active');
+      else chip.classList.remove('active');
+    });
+  }
+
+  function highlightRegionStrip(cityName){
+    Array.prototype.forEach.call(document.querySelectorAll('.cc-region-chip'), function(chip){
+      if(chip.getAttribute('data-city') === cityName) chip.classList.add('active');
+      else chip.classList.remove('active');
+    });
+  }
+
+  /* ---------- sidebar: rotates its own city every SIDEBAR_ROTATE_MS, independent of the main segment cycle ---------- */
+  var sidebarTimer = null, sidebarIdx = 0, sidebarStarted = false;
+  function renderSidebarCity(idx){
+    var city = state.cityList[idx];
+    if(!city) return;
+    var cur = city.current;
+    var info = wmoInfo(cur.weather_code, cur.is_day===1);
+    els.sbIcon.innerHTML = icon(info[1]);
+    els.sbTemp.textContent = Math.round(cur.temperature_2m) + '°F';
+    els.sbCond.textContent = info[0];
+    els.sbFeels.textContent = (cur.apparent_temperature!=null ? Math.round(cur.apparent_temperature) : '--') + '°';
+    els.sbWind.textContent = (cur.wind_speed_10m!=null ? Math.round(cur.wind_speed_10m) : '--') + ' mph';
+    els.sbHum.textContent = (cur.relative_humidity_2m!=null ? cur.relative_humidity_2m : '--') + '%';
+    els.sbPress.textContent = (cur.pressure_msl!=null ? (cur.pressure_msl*0.02953).toFixed(2) : '--') + '"';
+    els.sbPlace.innerHTML = city.name + '<small id="sbRegion">'+(city.region||'')+'</small>';
+    highlightState(city.state);
+    highlightRegionStrip(city.name);
+  }
+  function ensureSidebarRotation(){
+    if(!state.cityList.length) return;
+    if(sidebarIdx >= state.cityList.length) sidebarIdx = 0;
+    renderSidebarCity(sidebarIdx);
+    if(sidebarStarted) return;
+    sidebarStarted = true;
+    sidebarTimer = setInterval(function(){
+      if(!state.cityList.length) return;
+      sidebarIdx = (sidebarIdx + 1) % state.cityList.length;
+      renderSidebarCity(sidebarIdx);
+    }, SIDEBAR_ROTATE_MS);
+  }
+
+  /* ---------- generic per-segment city rotator ---------- */
+  function makeCityRotator(renderFn){
+    var timer = null, idx = 0;
+    return {
+      start: function(){
+        idx = 0;
+        if(state.cityList.length) renderFn(0);
+        clearInterval(timer);
+        if(state.cityList.length > 1){
+          timer = setInterval(function(){
+            idx = (idx + 1) % state.cityList.length;
+            renderFn(idx);
+          }, CITY_ROTATE_MS);
+        }
+      },
+      stop: function(){ clearInterval(timer); }
+    };
+  }
+
+  function renderCurrentCity(idx){
+    var city = state.cityList[idx];
+    if(!city) return;
+    var cur = city.current;
+    var info = wmoInfo(cur.weather_code, cur.is_day===1);
+    var windDir = cur.wind_direction_10m!=null ? degToCompass(cur.wind_direction_10m) : '--';
+    els.ccPlace.textContent = city.name + (city.region ? ' · '+city.region : '');
+    els.ccIcon.innerHTML = icon(info[1]);
+    els.ccTemp.textContent = Math.round(cur.temperature_2m) + '°';
+    els.ccCond.textContent = info[0] + (cur.apparent_temperature!=null ? ' · Feels Like ' + Math.round(cur.apparent_temperature) + '°' : '');
+    els.ccGrid.innerHTML = [
+      ['WIND', (kmhToMph(cur.wind_speed_10m)!=null?kmhToMph(cur.wind_speed_10m):'--') + ' mph ' + windDir],
+      ['GUSTS', (kmhToMph(cur.wind_gusts_10m)!=null?kmhToMph(cur.wind_gusts_10m):'--') + ' mph'],
+      ['HUMIDITY', (cur.relative_humidity_2m!=null?cur.relative_humidity_2m:'--') + '%'],
+      ['DEW POINT', (cur.dew_point_2m!=null?Math.round(cur.dew_point_2m):'--') + '°'],
+      ['PRESSURE', (cur.pressure_msl!=null?(cur.pressure_msl*0.02953).toFixed(2):'--') + ' inHg'],
+      ['CLOUD COVER', (cur.cloud_cover!=null?cur.cloud_cover:0) + '%'],
+      ['PRECIP', (cur.precipitation!=null?cur.precipitation.toFixed(2):'0.00') + ' in'],
+      ['UPDATED', nowHHMM(state.data ? state.data.timezone : undefined)]
+    ].map(function(p){ return '<div class="cc-cell"><span>'+p[0]+'</span><b>'+p[1]+'</b></div>'; }).join('');
+    els.ccDots.innerHTML = dotsHtml(state.cityList.length, idx);
+    highlightRegionStrip(city.name);
+  }
+
+  function renderTodayCity(idx){
+    var city = state.cityList[idx];
+    if(!city) return;
+    var cur = city.current, d = city.daily;
+    var info = wmoInfo(cur.weather_code, cur.is_day===1);
+    var hi = Math.round(d.temperature_2m_max[0]), lo = Math.round(d.temperature_2m_min[0]);
+    var pop = d.precipitation_probability_max[0] || 0;
+
+    els.tfPlace.textContent = city.name + (city.state ? ', ' + city.state : '');
+    var headline = info[0] + ' expected today in <b>' + city.name + '</b> with a high near <b>' + hi + '°</b>. ' +
+      (pop >= 40 ? 'Chance of precipitation around ' + pop + '%.' : 'Little to no precipitation is expected.');
+    els.tfHeadline.innerHTML = headline;
+    els.tfIcon.innerHTML = icon(info[1]);
+    els.tfHilo.innerHTML = '<span class="hi">H '+hi+'°</span><span class="lo">L '+lo+'°</span>';
+
+    var windBit = '--';
+    if(cur.wind_speed_10m != null){
+      windBit = kmhToMph(cur.wind_speed_10m) + ' mph' + (cur.wind_direction_10m!=null ? ' ' + degToCompass(cur.wind_direction_10m) : '');
+    }
+    els.tfExtra.innerHTML =
+      '<div>PRECIP CHANCE <b>'+pop+'%</b></div>' +
+      '<div>PEAK UV <b>'+(d.uv_index_max && d.uv_index_max[0]!=null ? d.uv_index_max[0].toFixed(1) : '--')+'</b></div>' +
+      '<div>WIND <b>'+windBit+'</b></div>';
+    els.tfDots.innerHTML = dotsHtml(state.cityList.length, idx);
+  }
+
+  function renderExtendedCity(idx){
+    var city = state.cityList[idx];
+    if(!city) return;
+    var d = city.daily;
+    els.efPlace.textContent = city.name + (city.state ? ', ' + city.state : '') + ' · 5-Day Outlook';
+    var html = '';
+    for(var i=1;i<Math.min(6, d.time.length);i++){
+      var dinfo = wmoInfo(d.weather_code[i], true);
+      var dname = new Date(d.time[i]+'T12:00:00').toLocaleDateString('en-US',{weekday:'short'});
+      html += '<div class="ef-day"><div class="dname">'+dname+'</div>' + icon(dinfo[1]) +
+        '<div class="hi">'+Math.round(d.temperature_2m_max[i])+'°</div>' +
+        '<div class="lo">'+Math.round(d.temperature_2m_min[i])+'°</div>' +
+        '<div class="pop">'+(d.precipitation_probability_max[i]||0)+'% precip</div></div>';
+    }
+    els.efGrid.innerHTML = html;
+    els.efDots.innerHTML = dotsHtml(state.cityList.length, idx);
+  }
+
+  var currentRotator = makeCityRotator(renderCurrentCity);
+  var todayRotator = makeCityRotator(renderTodayCity);
+  var extendedRotator = makeCityRotator(renderExtendedCity);
+  var ROTATORS = { segCurrent: currentRotator, segToday: todayRotator, segExtended: extendedRotator };
+
+  function renderAlmanacAndClockDependent(){
+    var d = state.data, cur = d.current;
+
+    /* almanac */
+    els.amPlace.textContent = state.place.name;
+    els.amSunrise.textContent = fmtTime(d.daily.sunrise[0]);
+    els.amSunset.textContent = fmtTime(d.daily.sunset[0]);
+    var sunrise = new Date(d.daily.sunrise[0]), sunset = new Date(d.daily.sunset[0]);
+    var lenMs = sunset - sunrise;
+    var lenH = Math.floor(lenMs/3600000), lenM = Math.round((lenMs%3600000)/60000);
+    els.amDaylen.textContent = lenH + 'h ' + lenM + 'm';
+    els.amUv.textContent = d.daily.uv_index_max[0]!=null ? d.daily.uv_index_max[0].toFixed(1) : '--';
+
+    var moon = moonPhaseInfo(new Date());
+    els.amMoonEmoji.textContent = moon.emoji;
+    els.amMoonName.textContent = moon.name;
+    els.amMoonPct.textContent = Math.round(moon.illum*100) + '% illuminated';
+    els.amMoonAge.textContent = moon.age.toFixed(1) + ' days';
+
+    els.amPress.textContent = (cur.pressure_msl*0.02953).toFixed(2) + ' inHg';
+    var nowIso = cur.time;
+    var hourIdx = d.hourly.time.indexOf(nowIso);
+    if(hourIdx < 0) hourIdx = d.hourly.time.length - 1;
+    var trend = pressureTrend(d.hourly, hourIdx);
+    els.amTrend.textContent = trend ? trend.desc + ' ' + trend.arrow : '--';
+
+    /* bulletin is filled per-alert when rotated in */
+  }
+
+  function buildTicker(){
+    var d = state.data, cur = d.current;
+    var info = wmoInfo(cur.weather_code, cur.is_day===1);
+    var msgs = [
+      'GIONEWS WEATHER — ' + state.place.name.toUpperCase() + (state.place.region ? ', ' + state.place.region.toUpperCase() : ''),
+      info[0].toUpperCase() + ', ' + Math.round(cur.temperature_2m) + '°F, FEELS LIKE ' + Math.round(cur.apparent_temperature) + '°',
+      "TODAY'S HIGH " + Math.round(d.daily.temperature_2m_max[0]) + '° / LOW ' + Math.round(d.daily.temperature_2m_min[0]) + '°',
+      'WIND ' + Math.round(cur.wind_speed_10m*0.621371) + ' MPH FROM THE ' + degToCompass(cur.wind_direction_10m),
+      'A PRODUCTION OF GIO\'S WACKY PROJECTS · GIONEWS TV'
+    ];
+    if(state.regional){
+      var bits = [];
+      state.regional.forEach(function(r,i){
+        if(r.current) bits.push(REGIONAL_CITIES[i].state + ' ' + Math.round(r.current.temperature_2m) + '°');
+      });
+      if(bits.length) msgs.splice(4, 0, 'REGIONAL: ' + bits.join(' · '));
+    }
+    if(state.alerts && state.alerts.length){
+      msgs.splice(1, 0, (state.alerts[0].properties.event || 'WEATHER ALERT').toUpperCase() + ' IN EFFECT FOR THIS AREA');
+    }
+    els.tickerTrack.textContent = msgs.join('     •     ') + '     •     ';
+  }
+
+  /* ---------- radar: National Weather Service regional mosaic ---------- */
+  function initRadarMap(){
+    els.radarImg.src = RADAR_FALLBACK_URL + '?_=' + Date.now();
+  }
+
+  /* ---------- bulletin fill ---------- */
+  function fillBulletin(feature){
+    var p = feature.properties || {};
+    els.blMeta.textContent = (p.severity||'Unknown') + ' · ' + (p.areaDesc||'This area') + (p.expires ? ' · Until ' + new Date(p.expires).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}) : '');
+    els.blEvent.textContent = p.event || 'Weather Alert';
+    els.blHeadline.textContent = p.headline || p.description || '';
+    els.blInstr.textContent = p.instruction || '';
+  }
+
+  /* ---------- rotation engine (main segment cycle) ---------- */
+  var advanceTimer = null;
+
+  function rebuildCycle(){
+    var cyc = SEGMENT_ORDER.slice();
+    if(state.alerts && state.alerts.length){
+      cyc.splice(2, 0, 'segBulletin'); // slot the bulletin in after "today's forecast"
+    }
+    state.cycle = cyc;
+    if(state.segIdx === -1) startCycle();
+  }
+
+  function startCycle(){
+    state.segIdx = 0;
+    showBumper(state.cycle[0]);
+  }
+
+  function showBumper(nextSegId){
+    Object.keys(panels).forEach(function(id){ panels[id].classList.remove('active'); });
+    var info = state.data ? wmoInfo(state.data.current.weather_code, state.data.current.is_day===1) : ['','sun'];
+    els.bumpIcon.innerHTML = icon(nextSegId === 'segRadar' ? 'cloud' : info[1]);
+    els.bumpName.textContent = SEGMENT_LABEL[nextSegId] || 'GioNews Weather';
+    bumperEl.classList.add('active');
+    clearTimeout(advanceTimer);
+    advanceTimer = setTimeout(function(){ showSegment(nextSegId); }, BUMPER_DURATION);
+  }
+
+  function showSegment(segId){
+    bumperEl.classList.remove('active');
+    Object.keys(ROTATORS).forEach(function(k){ ROTATORS[k].stop(); });
+
+    if(segId === 'segBulletin' && state.alerts && state.alerts.length){
+      fillBulletin(state.alerts[0]);
+    }
+    if(segId === 'segRadar'){
+      initRadarMap();
+    }
+    if(ROTATORS[segId]){
+      ROTATORS[segId].start();
+    }
+    panels[segId].classList.add('active');
+    clearTimeout(advanceTimer);
+    var duration = ROTATORS[segId]
+      ? Math.max(state.cityList.length, 1) * CITY_ROTATE_MS
+      : (SEGMENT_DURATION[segId] || 8000);
+    advanceTimer = setTimeout(advance, duration);
+  }
+
+  function advance(){
+    Object.keys(ROTATORS).forEach(function(k){ ROTATORS[k].stop(); });
+    panels[state.cycle[state.segIdx]].classList.remove('active');
+    state.segIdx = (state.segIdx + 1) % state.cycle.length;
+    showBumper(state.cycle[state.segIdx]);
+  }
+
+  /* ---------- text-to-speech (always on) ---------- */
+  var ttsVoice = null;
+  function pickVoice(){
+    if(!window.speechSynthesis) return;
+    var voices = window.speechSynthesis.getVoices();
+    ttsVoice = voices.find(function(v){ return /en/i.test(v.lang) && /Google US English|Samantha|Aria|Zira|Guy|Female/i.test(v.name); }) ||
+               voices.find(function(v){ return /^en/i.test(v.lang); }) || voices[0] || null;
+  }
+  if(window.speechSynthesis){
+    pickVoice();
+    window.speechSynthesis.onvoiceschanged = pickVoice;
+  }
+
+  function speak(text){
+    if(!window.speechSynthesis || !text) return;
+    var synth = window.speechSynthesis;
+    function doSpeak(){
+      var utter = new SpeechSynthesisUtterance(text);
+      if(ttsVoice) utter.voice = ttsVoice;
+      utter.rate = 1.02;
+      utter.pitch = 1;
+      utter.volume = 1;
+      synth.speak(utter);
+    }
+    // iOS Safari can silently drop the new utterance if speak() follows cancel() in the
+    // same tick, so give it a beat when something is already talking.
+    if(synth.speaking || synth.pending){
+      synth.cancel();
+      setTimeout(doSpeak, 60);
+    } else {
+      doSpeak();
+    }
+  }
+
+  // iOS Safari has a long-standing bug where it stops mid-utterance after ~15s unless the
+  // synth is nudged. This keeps longer segments (extended forecast, regional roundup) from
+  // going silent partway through.
+  if(window.speechSynthesis){
+    setInterval(function(){
+      if(window.speechSynthesis.speaking){
+        window.speechSynthesis.pause();
+        window.speechSynthesis.resume();
+      }
+    }, 4000);
+  }
+
+  // Browsers refuse to play any audio, including speech synthesis, until the page has
+  // received one user gesture. The gate div in the markup provides that single required
+  // tap; once dismissed here it never reappears and there is no way to silence narration
+  // afterward.
+  var ttsGateEl = document.getElementById('ttsGate');
+  function dismissGate(){
+    if(!ttsGateEl) return;
+    if(window.speechSynthesis){
+      var u = new SpeechSynthesisUtterance('');
+      u.volume = 0;
+      window.speechSynthesis.speak(u);
+    }
+    ttsGateEl.style.display = 'none';
+    ttsGateEl = null;
+    state.audioUnlocked = true;
+    maybeStartBroadcast();
+    initMic();
+  }
+  if(document.getElementById('ttsGate')){
+    document.getElementById('ttsGate').addEventListener('click', dismissGate, {once:true});
+    document.getElementById('ttsGate').addEventListener('touchstart', dismissGate, {once:true});
+  }
+  window.addEventListener('keydown', dismissGate, {once:true});
+
+  /* ---------- mic-triggered EAS interrupt (phone mic -> this page -> OBS) ----------
+     Pressing a key on a telephone sends a DTMF dual tone — two exact sine waves mixed
+     together. "9" is 852Hz + 1477Hz. Instead of guessing at a volume level, this listens
+     for exactly that pair of frequencies (via the Goertzel algorithm, the standard way to
+     pull one frequency's strength out of an audio block) and only fires once both tones
+     have been continuously present for DTMF_HOLD_MS. Holding 9 again toggles it back off.
+     The corner readout shows live tone strength so you can tune DTMF_MIN_AMP
+     against your actual phone line if it doesn't trigger reliably. Note: with no
+     dominance check, any sound with enough energy at 852Hz+1477Hz — including some
+     voices or music — held for 2s can also trigger it, not just the phone's "9" tone. */
+  var DTMF_LOW_FREQ    = 852;   // "9" row tone
+  var DTMF_HIGH_FREQ   = 1477;  // "9" column tone
+  var DTMF_HOLD_MS     = 2000;  // must hold the key this long to toggle
+  var DTMF_MIN_AMP     = 0.002; // minimum strength (0..~1) either tone must reach — just enough to reject total silence/near-zero hiss; the dominance ratio does the real filtering
+  var DTMF_SMOOTH      = 0.35;  // 0-1, how much each new reading moves the smoothed value — lower = steadier but slower to react
+  var DTMF_GRACE_MS    = 0;     // any silence resets the hold immediately — this is what tells apart a steady held tone from speech, which always has small gaps
+
+  var mic = { ctx:null, source:null, analyser:null, data:null, echoGain:null, stream:null, ready:false,
+    toneSince:null, lastPresentAt:null, armed:true, emaLow:0, emaHigh:0, emaRms:0 };
+  var easOverlayEl = document.getElementById('easOverlay');
+
+  function initMic(){
+    if(mic.ready || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
+    navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation:false, noiseSuppression:false, autoGainControl:false }
+    }).then(function(stream){
+      var AC = window.AudioContext || window.webkitAudioContext;
+      mic.ctx = new AC();
+      mic.stream = stream;
+      mic.source = mic.ctx.createMediaStreamSource(stream);
+      mic.analyser = mic.ctx.createAnalyser();
+      mic.analyser.fftSize = 2048;
+      mic.data = new Float32Array(mic.analyser.fftSize);
+      mic.source.connect(mic.analyser);
+      // echoGain carries the mic through to the speakers (and so into OBS's desktop-audio
+      // capture) only while EAS is active — kept disconnected otherwise to avoid feedback.
+      mic.echoGain = mic.ctx.createGain();
+      mic.echoGain.gain.value = 1;
+      mic.ready = true;
+      requestAnimationFrame(micLoop);
+    }).catch(function(err){
+      // getUserMedia failed (denied permission, no mic, etc) — fail silently, the EAS
+      // trigger just won't be available.
+    });
+  }
+
+  // Goertzel algorithm: how strongly one specific frequency is present in a block of
+  // samples, without computing a full FFT. Returns an amplitude-ish value where ~1.0
+  // would be a full-scale pure tone at that exact frequency.
+  function goertzelAmp(samples, targetFreq, sampleRate){
+    var N = samples.length;
+    var k = Math.round(0.5 + (N * targetFreq) / sampleRate);
+    var omega = (2 * Math.PI * k) / N;
+    var coeff = 2 * Math.cos(omega);
+    var q0 = 0, q1 = 0, q2 = 0;
+    for(var i=0;i<N;i++){ q0 = coeff*q1 - q2 + samples[i]; q2 = q1; q1 = q0; }
+    var real = q1 - q2*Math.cos(omega);
+    var imag = q2*Math.sin(omega);
+    return (2 / N) * Math.sqrt(real*real + imag*imag);
+  }
+
+  function detectDigit9(){
+    mic.analyser.getFloatTimeDomainData(mic.data);
+    var sampleRate = mic.ctx.sampleRate;
+    var rawLow = goertzelAmp(mic.data, DTMF_LOW_FREQ, sampleRate);
+    var rawHigh = goertzelAmp(mic.data, DTMF_HIGH_FREQ, sampleRate);
+    var sumSq = 0;
+    for(var i=0;i<mic.data.length;i++){ sumSq += mic.data[i]*mic.data[i]; }
+    var rawRms = Math.sqrt(sumSq / mic.data.length) || 0.000001;
+
+    // Smooth each reading so single-frame jitter (a brief dip from mic noise or window
+    // phase) doesn't flicker the detection on and off — this is what was resetting your
+    // hold timer even while you kept 9 pressed.
+    mic.emaLow  += (rawLow  - mic.emaLow)  * DTMF_SMOOTH;
+    mic.emaHigh += (rawHigh - mic.emaHigh) * DTMF_SMOOTH;
+    mic.emaRms  += (rawRms  - mic.emaRms)  * DTMF_SMOOTH;
+
+    var present = mic.emaLow >= DTMF_MIN_AMP && mic.emaHigh >= DTMF_MIN_AMP;
+    return {
+      present: present, ampLow: mic.emaLow, ampHigh: mic.emaHigh, rms: mic.emaRms,
+      lowAmpOk: mic.emaLow >= DTMF_MIN_AMP, highAmpOk: mic.emaHigh >= DTMF_MIN_AMP
+    };
+  }
+
+  function micLoop(){
+    if(!mic.ready) return;
+    var d = detectDigit9();
+    var now = performance.now();
+    var heldMs = 0;
+
+    if(d.present){
+      mic.lastPresentAt = now;
+      if(mic.toneSince == null) mic.toneSince = now;
+    } else if(mic.toneSince != null && mic.lastPresentAt != null && (now - mic.lastPresentAt) > DTMF_GRACE_MS){
+      // Only actually break the hold after a real gap, not a single weak frame.
+      mic.toneSince = null;
+      mic.armed = true;
+    }
+
+    if(mic.toneSince != null){
+      heldMs = now - mic.toneSince;
+      if(mic.armed && heldMs >= DTMF_HOLD_MS){
+        mic.armed = false; // don't re-toggle again until the key is released
+        if(state.easActive) exitEAS(); else triggerEAS();
+      }
+    }
+
+    requestAnimationFrame(micLoop);
+  }
+
+  function triggerEAS(){
+    if(state.easActive || !mic.ready) return;
+    state.easActive = true;
+
+    // Freeze whatever the normal broadcast is doing, same as the manual interrupt does.
+    clearTimeout(advanceTimer);
+    Object.keys(ROTATORS).forEach(function(k){ ROTATORS[k].stop(); });
+    if(easOverlayEl) easOverlayEl.classList.add('active');
+
+    var synth = window.speechSynthesis;
+    if(!synth){ startEcho(); return; }
+    function doSpeak(){
+      var utter = new SpeechSynthesisUtterance('This is an important alert. Please listen to the following message.');
+      if(ttsVoice) utter.voice = ttsVoice;
+      utter.rate = 1.0;
+      utter.pitch = 1;
+      utter.volume = 1;
+      utter.onend = function(){ if(state.easActive) startEcho(); };
+      utter.onerror = function(){ if(state.easActive) startEcho(); };
+      synth.speak(utter);
+    }
+    if(synth.speaking || synth.pending){ synth.cancel(); setTimeout(doSpeak, 60); } else { doSpeak(); }
+  }
+
+  function startEcho(){
+    if(!mic.ready) return;
+    try{ mic.source.connect(mic.echoGain); mic.echoGain.connect(mic.ctx.destination); }catch(e){}
+  }
+  function stopEcho(){
+    if(!mic.ready) return;
+    try{ mic.echoGain.disconnect(); }catch(e){}
+    try{ mic.source.disconnect(mic.echoGain); }catch(e){}
+  }
+
+  function exitEAS(){
+    if(!state.easActive) return;
+    state.easActive = false;
+    stopEcho();
+    if(easOverlayEl) easOverlayEl.classList.remove('active');
+    var synth = window.speechSynthesis;
+    if(synth) synth.cancel();
+    startCycle();
+    setTimeout(speakFullBroadcast, 80);
+  }
+
+  /* ---------- full continuous broadcast script: every city, every forecast, on a loop ---------- */
+  function cityCurrentLine(city, isHome){
+    var cur = city.current;
+    var info = wmoInfo(cur.weather_code, cur.is_day===1);
+    var windDir = cur.wind_direction_10m!=null ? degToCompass(cur.wind_direction_10m) : '';
+    return city.name + (city.state ? ', ' + city.state : '') + (isHome ? ', home of our GioNews Weather news center' : '') + ': ' +
+      Math.round(cur.temperature_2m) + ' degrees, ' +
+      info[0].toLowerCase() + ', feels like ' + Math.round(cur.apparent_temperature) + ' degrees, wind ' +
+      (kmhToMph(cur.wind_speed_10m)!=null ? kmhToMph(cur.wind_speed_10m) : '--') + ' miles per hour from the ' + windDir +
+      ', humidity ' + (cur.relative_humidity_2m!=null ? cur.relative_humidity_2m : '--') + ' percent.';
+  }
+  function cityTodayLine(city){
+    var d = city.daily;
+    var hi = Math.round(d.temperature_2m_max[0]), lo = Math.round(d.temperature_2m_min[0]);
+    var pop = d.precipitation_probability_max[0] || 0;
+    var info = wmoInfo(city.current.weather_code, city.current.is_day===1);
+    return city.name + ' today: ' + info[0].toLowerCase() + ', high ' + hi + ', low ' + lo +
+      (pop >= 30 ? ', ' + pop + ' percent chance of precipitation.' : '.');
+  }
+  function cityExtendedLine(city){
+    var d = city.daily;
+    var parts = [];
+    for(var i=1; i<Math.min(6, d.time.length); i++){
+      var dname = new Date(d.time[i]+'T12:00:00').toLocaleDateString('en-US',{weekday:'long'});
+      var dinfo = wmoInfo(d.weather_code[i], true);
+      parts.push(dname + ', ' + dinfo[0].toLowerCase() + ', high ' + Math.round(d.temperature_2m_max[i]) + ', low ' + Math.round(d.temperature_2m_min[i]));
+    }
+    return city.name + ' extended outlook: ' + parts.join('. ') + '.';
+  }
+
+  function buildFullBroadcastScript(){
+    if(!state.data || !state.cityList.length) return '';
+    var lines = ['GioNews Weather, broadcasting from our news center in ' + state.place.name + ', ' +
+      (state.place.stateAbbr || 'Missouri') + ', with your full regional update for ' +
+      new Date().toLocaleDateString('en-US',{weekday:'long', month:'long', day:'numeric'}) + '.'];
+
+    if(state.alerts && state.alerts.length){
+      var p = state.alerts[0].properties || {};
+      lines.push('Weather alert: ' + (p.event || 'Weather alert') + ' in effect for ' + (p.areaDesc || 'this area') + '. ' +
+        (p.headline || '') + (p.instruction ? ' ' + p.instruction : ''));
+    }
+
+    lines.push('Current conditions across the region.');
+    state.cityList.forEach(function(c, i){ lines.push(cityCurrentLine(c, i===0)); });
+
+    lines.push("Today's forecast, city by city.");
+    state.cityList.forEach(function(c){ lines.push(cityTodayLine(c)); });
+
+    lines.push('And now the extended outlook for every city.');
+    state.cityList.forEach(function(c){ lines.push(cityExtendedLine(c)); });
+
+    var d = state.data.daily;
+    var moon = moonPhaseInfo(new Date());
+    lines.push('Almanac for ' + state.place.name + ': sunrise at ' + fmtTime(d.sunrise[0]) + ', sunset at ' + fmtTime(d.sunset[0]) +
+      '. Moon phase: ' + moon.name + ', ' + Math.round(moon.illum*100) + ' percent illuminated.');
+
+    lines.push("If you want to find out your conditions in your area, go to Gio Weather dot pages dot dev today! Also, support me by taking a look at my portfolio at Gio's dash projects dot pages dot dev.");
+
+    lines.push("That's your GioNews Weather full update. Here it comes again.");
+    return lines.join(' ');
+  }
+
+  function speakFullBroadcast(){
+    if(state.interrupted) return;
+    var script = buildFullBroadcastScript();
+    if(!window.speechSynthesis){ return; }
+    if(!script){ setTimeout(speakFullBroadcast, 3000); return; }
+    var synth = window.speechSynthesis;
+    function doSpeak(){
+      var utter = new SpeechSynthesisUtterance(script);
+      if(ttsVoice) utter.voice = ttsVoice;
+      utter.rate = 1.06;
+      utter.pitch = 1;
+      utter.volume = 1;
+      utter.onend = function(){ if(!state.interrupted) setTimeout(speakFullBroadcast, 1200); };
+      utter.onerror = function(){ if(!state.interrupted) setTimeout(speakFullBroadcast, 3000); };
+      synth.speak(utter);
+    }
+    if(synth.speaking || synth.pending){
+      synth.cancel();
+      setTimeout(doSpeak, 60);
+    } else {
+      doSpeak();
+    }
+  }
+
+  /* ---------- spacebar interrupt: cut to ad slide + blackout, resume on next press/click ---------- */
+  var blackoutEl = document.getElementById('blackout');
+
+  function enterInterrupt(){
+    if(state.interrupted) return;
+    state.interrupted = true;
+    clearTimeout(advanceTimer);
+    Object.keys(ROTATORS).forEach(function(k){ ROTATORS[k].stop(); });
+    bumperEl.classList.remove('active');
+    Object.keys(panels).forEach(function(id){ panels[id].classList.remove('active'); });
+    if(panels.segAd) panels.segAd.classList.add('active');
+    if(blackoutEl) blackoutEl.classList.remove('active');
+
+    var synth = window.speechSynthesis;
+    if(!synth) return;
+    var msg = 'We are now returning to our regular broadcasting. Please visit Gio Weather dot pages dot dev to see your weather conditions.';
+    function doSpeak(){
+      var utter = new SpeechSynthesisUtterance(msg);
+      if(ttsVoice) utter.voice = ttsVoice;
+      utter.rate = 1.02;
+      utter.pitch = 1;
+      utter.volume = 1;
+      utter.onend = function(){ if(state.interrupted && blackoutEl) blackoutEl.classList.add('active'); };
+      utter.onerror = function(){ if(state.interrupted && blackoutEl) blackoutEl.classList.add('active'); };
+      synth.speak(utter);
+    }
+    if(synth.speaking || synth.pending){
+      synth.cancel();
+      setTimeout(doSpeak, 60);
+    } else {
+      doSpeak();
+    }
+  }
+
+  function resumeBroadcast(){
+    if(!state.interrupted) return;
+    state.interrupted = false;
+    if(blackoutEl) blackoutEl.classList.remove('active');
+    if(panels.segAd) panels.segAd.classList.remove('active');
+    var synth = window.speechSynthesis;
+    if(synth) synth.cancel();
+    startCycle();
+    setTimeout(speakFullBroadcast, 80);
+  }
+
+  function toggleInterrupt(){
+    if(!state.broadcastStarted) return;
+    if(state.easActive) return; // EAS takes priority; ignore manual interrupt while it's live
+    if(state.interrupted){ resumeBroadcast(); } else { enterInterrupt(); }
+  }
+
+  window.addEventListener('keydown', function(e){
+    if(e.code === 'Space' || e.keyCode === 32){
+      e.preventDefault();
+      toggleInterrupt();
+    }
+  });
+  document.addEventListener('click', function(){
+    if(state.easActive) return;
+    if(state.interrupted) resumeBroadcast();
+  });
+
+  function maybeStartBroadcast(){
+    if(state.broadcastStarted) return;
+    if(!state.audioUnlocked) return;
+    if(!state.data || !state.cityList.length) return;
+    state.broadcastStarted = true;
+    speakFullBroadcast();
+  }
+
+  /* ---------- boot ---------- */
+  function boot(){
+    loadWeather(DEFAULT_PLACE);
+    loadRegional();
+    setInterval(function(){ loadWeather(state.place); }, DATA_REFRESH_MS);
+    setInterval(loadRegional, DATA_REFRESH_MS);
+    setInterval(function(){
+      var alertUrl = 'https://api.weather.gov/alerts/active?point=' + state.place.lat.toFixed(4) + ',' + state.place.lon.toFixed(4);
+      fetch(alertUrl, {headers:{'Accept':'application/geo+json'}}).then(function(r){ return r.ok ? r.json() : null; })
+        .then(function(d){ state.alerts = (d && d.features) ? d.features : []; rebuildCycle(); buildTicker(); }).catch(function(){});
+    }, ALERT_REFRESH_MS);
+  }
+  boot();
+})();
+</script>
+</body>
+</html>
