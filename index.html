@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+m<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -429,6 +429,7 @@
     lightningLayer: document.getElementById('lightningLayer'),
     liveToggleBtn: document.getElementById('liveToggleBtn'),
     liveStreamBody: document.getElementById('liveStreamBody'),
+    liveStreamSection: document.getElementById('liveStreamSection'),
   };
 
   // ---------- weather code -> label + icon key ----------
@@ -633,6 +634,7 @@
   function loadTestScenario(sc){
     state.lat = 0; state.lon = 0;
     state.place = { name: sc.label, region: 'Simulated data — not a live forecast', elevation: 42 };
+    updateLiveAvailability(false);
     state.data = buildScenarioData(sc);
     state.aqi = { current: {
       us_aqi: sc.precip>0 ? 62 : 28, pm2_5: sc.precip>0 ? 14 : 6, pm10: sc.precip>0 ? 22 : 11,
@@ -713,11 +715,32 @@
     if(state.data) render();
   }
 
+  var COVERAGE_STATES = ['Missouri','Oklahoma','Iowa','Illinois','Kansas'];
+  function isCoverageArea(region){
+    if(!region) return false;
+    return COVERAGE_STATES.some(function(s){ return region.indexOf(s) !== -1; });
+  }
+
   var liveStarted = false;
+  function updateLiveAvailability(covered){
+    state.liveCoverage = covered;
+    if(!covered){
+      els.liveStreamSection.style.display = 'none';
+      stopLiveStream();
+      return;
+    }
+    els.liveStreamSection.style.display = '';
+    var savedLive = '1';
+    try{ savedLive = localStorage.getItem('gioweather-live-visible') || '1'; }catch(e){}
+    setLiveVisible(savedLive !== '0');
+    if(savedLive !== '0' && !liveStarted){ liveStarted = true; initLiveStream(); }
+  }
+
   els.liveToggleBtn.addEventListener('click', function(){
     var showing = els.liveStreamBody.style.display === 'none';
     setLiveVisible(showing);
     if(showing && !liveStarted){ liveStarted = true; initLiveStream(); }
+    if(!showing){ stopLiveStream(); }
   });
   function setLiveVisible(visible){
     els.liveStreamBody.style.display = visible ? 'block' : 'none';
@@ -734,6 +757,7 @@
 
   function loadLocation(lat, lon, name, region, elevationHint){
     state.lat = lat; state.lon = lon; state.place = {name:name, region:region, elevation:elevationHint};
+    updateLiveAvailability(isCoverageArea(region));
     setStatus('Loading sky…');
     els.app.style.display = 'none';
     els.alertStack.style.display = 'none';
@@ -1190,38 +1214,43 @@
     document.getElementById('nUtc').textContent = d.utc_offset_seconds != null ? 'UTC' + (d.utc_offset_seconds>=0?'+':'') + (d.utc_offset_seconds/3600) : '--';
   }
 
-  // ================= LIVE STREAM (GioNews TV) =================
+  // ================= LIVE STREAM (GioNews TV / EAS DE) =================
+  var hlsInstance = null;
   function initLiveStream(){
     var video = document.getElementById('liveStreamVideo');
     var src = 'https://183.bozztv.com/giatv/giatv-easde/easde/playlist.m3u8';
+    if(hlsInstance){ hlsInstance.destroy(); hlsInstance = null; }
     if(video.canPlayType('application/vnd.apple.mpegurl')){
       video.src = src;
     } else if(window.Hls && Hls.isSupported()){
-      var hls = new Hls({ liveDurationInfinity:true });
-      hls.loadSource(src);
-      hls.attachMedia(video);
-      hls.on(Hls.Events.ERROR, function(evt, data){
-        if(data.fatal){
+      hlsInstance = new Hls({ liveDurationInfinity:true });
+      hlsInstance.loadSource(src);
+      hlsInstance.attachMedia(video);
+      hlsInstance.on(Hls.Events.ERROR, function(evt, data){
+        if(data.fatal && hlsInstance){
           switch(data.type){
-            case Hls.ErrorTypes.NETWORK_ERROR: hls.startLoad(); break;
-            case Hls.ErrorTypes.MEDIA_ERROR: hls.recoverMediaError(); break;
-            default: hls.destroy();
+            case Hls.ErrorTypes.NETWORK_ERROR: hlsInstance.startLoad(); break;
+            case Hls.ErrorTypes.MEDIA_ERROR: hlsInstance.recoverMediaError(); break;
+            default: hlsInstance.destroy(); hlsInstance = null;
           }
         }
       });
     } else {
       var section = document.getElementById('liveStreamSection');
-      section.innerHTML = '<div class="live-head"><span class="live-dot"></span><span>Live</span></div>' +
+      section.innerHTML = '<div class="live-head"><div class="live-head-left"><span class="live-dot"></span><span>Live</span></div></div>' +
         '<div style="padding:24px 8px; text-align:center; color:var(--ink-faint); font-family:var(--font-mono); font-size:12px;">Live stream unsupported in this browser</div>';
     }
   }
 
+  function stopLiveStream(){
+    var video = document.getElementById('liveStreamVideo');
+    if(hlsInstance){ hlsInstance.destroy(); hlsInstance = null; }
+    if(video){ video.pause(); video.removeAttribute('src'); video.load(); }
+    liveStarted = false;
+  }
+
   function boot(){
     setGradient(GRADIENTS.day);
-    var savedLive = '1';
-    try{ savedLive = localStorage.getItem('gioweather-live-visible') || '1'; }catch(e){}
-    setLiveVisible(savedLive !== '0');
-    if(savedLive !== '0'){ liveStarted = true; initLiveStream(); }
     if(navigator.geolocation){
       navigator.permissions && navigator.permissions.query({name:'geolocation'}).then(function(res){
         if(res.state === 'granted'){ els.geoBtn.click(); }
