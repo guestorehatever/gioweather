@@ -715,7 +715,7 @@
     if(state.data) render();
   }
 
-  var COVERAGE_STATES = ['Missouri','Oklahoma','Iowa','Illinois','Kansas'];
+  var COVERAGE_STATES = ['Missouri','Oklahoma','Iowa','Illinois','Kansas','Arkansas'];
   function isCoverageArea(region){
     if(!region) return false;
     return COVERAGE_STATES.some(function(s){ return region.indexOf(s) !== -1; });
