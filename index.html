@@ -135,7 +135,9 @@
 
   /* ---------------- live stream ---------------- */
   #liveStreamSection{padding:14px; margin-bottom:16px;}
-  .live-head{display:flex; align-items:center; gap:8px; margin:0 4px 10px;}
+  .live-head{display:flex; align-items:center; gap:8px; margin:0 4px 10px; justify-content:space-between;}
+  .live-head-left{display:flex; align-items:center; gap:8px;}
+  .live-toggle{padding:5px 12px; font-size:11px;}
   .live-dot{width:8px; height:8px; border-radius:50%; background:#ef4444; box-shadow:0 0 8px #ef4444; animation:livePulse 1.6s ease-in-out infinite;}
   @keyframes livePulse{0%,100%{opacity:1;} 50%{opacity:.35;}}
   .live-head span{font-family:var(--font-mono); font-size:11px; letter-spacing:1.8px; text-transform:uppercase; color:var(--ink-faint);}
@@ -286,8 +288,13 @@
     </div>
 
     <section id="liveStreamSection" class="glass">
-      <div class="live-head"><span class="live-dot"></span><span>Live</span></div>
-      <video id="liveStreamVideo" controls playsinline muted></video>
+      <div class="live-head">
+        <div class="live-head-left"><span class="live-dot"></span><span>Live</span></div>
+        <button class="live-toggle" id="liveToggleBtn">Hide</button>
+      </div>
+      <div id="liveStreamBody">
+        <video id="liveStreamVideo" controls playsinline muted></video>
+      </div>
     </section>
 
     <div id="alertStack"></div>
@@ -420,6 +427,8 @@
     precipLayer: document.getElementById('precipLayer'),
     fogLayer: document.getElementById('fogLayer'),
     lightningLayer: document.getElementById('lightningLayer'),
+    liveToggleBtn: document.getElementById('liveToggleBtn'),
+    liveStreamBody: document.getElementById('liveStreamBody'),
   };
 
   // ---------- weather code -> label + icon key ----------
@@ -702,6 +711,18 @@
     els.unitF.classList.toggle('active', u==='f');
     els.unitC.classList.toggle('active', u==='c');
     if(state.data) render();
+  }
+
+  var liveStarted = false;
+  els.liveToggleBtn.addEventListener('click', function(){
+    var showing = els.liveStreamBody.style.display === 'none';
+    setLiveVisible(showing);
+    if(showing && !liveStarted){ liveStarted = true; initLiveStream(); }
+  });
+  function setLiveVisible(visible){
+    els.liveStreamBody.style.display = visible ? 'block' : 'none';
+    els.liveToggleBtn.textContent = visible ? 'Hide' : 'Show';
+    try{ localStorage.setItem('gioweather-live-visible', visible ? '1' : '0'); }catch(e){}
   }
 
   els.nerdBtn.addEventListener('click', function(){
@@ -1197,7 +1218,10 @@
 
   function boot(){
     setGradient(GRADIENTS.day);
-    initLiveStream();
+    var savedLive = '1';
+    try{ savedLive = localStorage.getItem('gioweather-live-visible') || '1'; }catch(e){}
+    setLiveVisible(savedLive !== '0');
+    if(savedLive !== '0'){ liveStarted = true; initLiveStream(); }
     if(navigator.geolocation){
       navigator.permissions && navigator.permissions.query({name:'geolocation'}).then(function(res){
         if(res.state === 'granted'){ els.geoBtn.click(); }
