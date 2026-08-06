@@ -127,6 +127,20 @@
   .statusline{font-family:var(--font-mono); font-size:11px; letter-spacing:1px; color:var(--ink-faint); padding:2px 6px 14px; text-transform:uppercase;}
   .statusline.err{color:#ffb4a8;}
 
+  /* ---------------- ticker crawl ---------------- */
+  .ticker-wrap{padding:12px 0; margin-bottom:16px; overflow:hidden; white-space:nowrap;}
+  .ticker{display:inline-block; font-family:var(--font-mono); font-size:11.5px; color:var(--ink-dim); letter-spacing:.4px; padding-left:100%; animation:scroll 26s linear infinite;}
+  @keyframes scroll{ from{transform:translateX(0);} to{transform:translateX(-100%);} }
+  @media (prefers-reduced-motion: reduce){ .ticker{animation:none; padding-left:16px;} }
+
+  /* ---------------- live stream ---------------- */
+  #liveStreamSection{padding:14px; margin-bottom:16px;}
+  .live-head{display:flex; align-items:center; gap:8px; margin:0 4px 10px;}
+  .live-dot{width:8px; height:8px; border-radius:50%; background:#ef4444; box-shadow:0 0 8px #ef4444; animation:livePulse 1.6s ease-in-out infinite;}
+  @keyframes livePulse{0%,100%{opacity:1;} 50%{opacity:.35;}}
+  .live-head span{font-family:var(--font-mono); font-size:11px; letter-spacing:1.8px; text-transform:uppercase; color:var(--ink-faint);}
+  #liveStreamVideo{width:100%; display:block; border-radius:16px; background:#000; aspect-ratio:16/9;}
+
   /* ---------------- weather alerts ---------------- */
   #alertStack{display:none; flex-direction:column; gap:10px; margin-bottom:16px;}
   .alert-card{
@@ -193,11 +207,6 @@
   .day-row .range{font-family:var(--font-body); font-size:13px; color:var(--ink-dim); text-align:right;}
   .day-row .range b{color:var(--ink); font-weight:700;}
   .day-row .pop{font-family:var(--font-mono); font-size:11.5px; color:var(--mint); text-align:right;}
-
-  .ticker-wrap{padding:12px 0; margin-top:16px; overflow:hidden; white-space:nowrap;}
-  .ticker{display:inline-block; font-family:var(--font-mono); font-size:11.5px; color:var(--ink-dim); letter-spacing:.4px; padding-left:100%; animation:scroll 26s linear infinite;}
-  @keyframes scroll{ from{transform:translateX(0);} to{transform:translateX(-100%);} }
-  @media (prefers-reduced-motion: reduce){ .ticker{animation:none; padding-left:16px;} }
 
   footer{text-align:center; font-family:var(--font-mono); font-size:10.5px; color:var(--ink-faint); margin-top:22px; letter-spacing:.6px;}
 
@@ -271,6 +280,16 @@
   <div id="statusline" class="statusline">Loading sky…</div>
 
   <div id="app" style="display:none;">
+
+    <div class="ticker-wrap">
+      <div class="ticker" id="marqueeText">GioWeather standing by…</div>
+    </div>
+
+    <section id="liveStreamSection" class="glass">
+      <div class="live-head"><span class="live-dot"></span><span>Live</span></div>
+      <video id="liveStreamVideo" controls playsinline muted></video>
+    </section>
+
     <div id="alertStack"></div>
 
     <section class="hero glass">
@@ -361,14 +380,12 @@
     <div class="section-title">7-day forecast</div>
     <div class="daily glass" id="dailyList"></div>
 
-    <div class="ticker-wrap">
-      <div class="ticker" id="marqueeText">GioWeather standing by…</div>
-    </div>
   </div>
 
-  <footer>GioWeather v2.1 · now with a nerd panel</footer>
+  <footer>GioWeather v2.2 · now with live TV</footer>
 </div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.13/hls.min.js"></script>
 <script>
 (function(){
   var state = { unit:'f', lat:null, lon:null, place:null, data:null, aqi:null, nerd:false, lightningTimer:null };
@@ -1152,8 +1169,35 @@
     document.getElementById('nUtc').textContent = d.utc_offset_seconds != null ? 'UTC' + (d.utc_offset_seconds>=0?'+':'') + (d.utc_offset_seconds/3600) : '--';
   }
 
+  // ================= LIVE STREAM (GioNews TV) =================
+  function initLiveStream(){
+    var video = document.getElementById('liveStreamVideo');
+    var src = 'https://183.bozztv.com/giatv/giatv-easde/easde/playlist.m3u8';
+    if(video.canPlayType('application/vnd.apple.mpegurl')){
+      video.src = src;
+    } else if(window.Hls && Hls.isSupported()){
+      var hls = new Hls({ liveDurationInfinity:true });
+      hls.loadSource(src);
+      hls.attachMedia(video);
+      hls.on(Hls.Events.ERROR, function(evt, data){
+        if(data.fatal){
+          switch(data.type){
+            case Hls.ErrorTypes.NETWORK_ERROR: hls.startLoad(); break;
+            case Hls.ErrorTypes.MEDIA_ERROR: hls.recoverMediaError(); break;
+            default: hls.destroy();
+          }
+        }
+      });
+    } else {
+      var section = document.getElementById('liveStreamSection');
+      section.innerHTML = '<div class="live-head"><span class="live-dot"></span><span>Live</span></div>' +
+        '<div style="padding:24px 8px; text-align:center; color:var(--ink-faint); font-family:var(--font-mono); font-size:12px;">Live stream unsupported in this browser</div>';
+    }
+  }
+
   function boot(){
     setGradient(GRADIENTS.day);
+    initLiveStream();
     if(navigator.geolocation){
       navigator.permissions && navigator.permissions.query({name:'geolocation'}).then(function(res){
         if(res.state === 'granted'){ els.geoBtn.click(); }
