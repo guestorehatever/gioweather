@@ -758,6 +758,9 @@
   function loadLocation(lat, lon, name, region, elevationHint){
     state.lat = lat; state.lon = lon; state.place = {name:name, region:region, elevation:elevationHint};
     updateLiveAvailability(isCoverageArea(region));
+    try{
+      localStorage.setItem('gioweather-last-location', JSON.stringify({lat:lat, lon:lon, name:name, region:region, elevation:elevationHint}));
+    }catch(e){}
     setStatus('Loading sky…');
     els.app.style.display = 'none';
     els.alertStack.style.display = 'none';
@@ -1251,6 +1254,12 @@
 
   function boot(){
     setGradient(GRADIENTS.day);
+    var saved = null;
+    try{ saved = JSON.parse(localStorage.getItem('gioweather-last-location')); }catch(e){}
+    if(saved && typeof saved.lat === 'number' && typeof saved.lon === 'number'){
+      loadLocation(saved.lat, saved.lon, saved.name, saved.region, saved.elevation);
+      return;
+    }
     if(navigator.geolocation){
       navigator.permissions && navigator.permissions.query({name:'geolocation'}).then(function(res){
         if(res.state === 'granted'){ els.geoBtn.click(); }
